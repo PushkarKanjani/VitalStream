@@ -43,21 +43,20 @@ export default function LandingPage({ onLaunchCommandCenter }) {
           {/* Tagline Pill */}
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50/90 border border-blue-200/80 text-blue-700 text-xs font-semibold mb-6 shadow-sm">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Next-Generation Perioperative Intelligence</span>
+            <span>Hospital Operating Room Monitoring</span>
           </div>
 
           {/* Main Title */}
           <h1 className="text-4xl sm:text-6xl font-extrabold text-slate-900 tracking-tight leading-[1.12] mb-6">
-            Real-Time Clinical Telemetry & <br className="hidden sm:block" />
+            Real-Time Hospital & <br className="hidden sm:block" />
             <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-              Surgical Orchestration
-            </span> at Scale.
+              Operating Room
+            </span> Monitoring.
           </h1>
 
           {/* Subtitle */}
           <p className="text-lg sm:text-xl text-slate-600 max-w-3xl mx-auto leading-relaxed mb-10 font-normal">
-            Streaming 518,000+ daily intraoperative vitals through Apache Kafka & Flink into Cassandra, 
-            guarded by ACID recovery bed allocations and closed-loop pharmacological allergy safety in MongoDB.
+            A distributed big data system tracking patient vitals across 6 operating rooms in real time, with instant alert detection, safe recovery bed bookings, and medication allergy checks.
           </p>
 
           {/* CTA Buttons */}
@@ -66,7 +65,7 @@ export default function LandingPage({ onLaunchCommandCenter }) {
               onClick={onLaunchCommandCenter}
               className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-blue-600 text-white font-semibold text-base shadow-lg shadow-blue-500/20 hover:bg-blue-700 hover:shadow-blue-500/30 transition-all flex items-center justify-center gap-2.5 group"
             >
-              <span>Launch Clinical Command Center</span>
+              <span>Open Command Center</span>
               <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
             </button>
 
@@ -75,7 +74,7 @@ export default function LandingPage({ onLaunchCommandCenter }) {
               className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-semibold text-base hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
             >
               <Layers className="w-4 h-4 text-slate-500" />
-              <span>Explore Architecture & SLAs</span>
+              <span>View Architecture</span>
             </a>
           </div>
 

@@ -68,11 +68,11 @@ export default function AlertQueue({ compact = false }) {
         <div>
           <h2 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
             <ShieldAlert className="w-4 h-4 text-rose-600" />
-            <span>Alert Incident Queue</span>
+            <span>Active Alerts</span>
           </h2>
           {!compact && (
             <p className="text-xs text-slate-500 mt-0.5">
-              PyFlink stateful threshold breaches with 10-minute escalation timers
+              Immediate warnings when patient vitals cross safe thresholds
             </p>
           )}
         </div>
@@ -174,7 +174,7 @@ export default function AlertQueue({ compact = false }) {
                   className="shrink-0 px-3 py-1.5 text-xs rounded-lg font-semibold bg-white border border-slate-300 text-slate-700 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700 transition-colors shadow-sm flex items-center gap-1.5"
                 >
                   <Check className="w-3.5 h-3.5" />
-                  <span>{acking === alert.alert_id ? '…' : 'ACK'}</span>
+                  <span>{acking === alert.alert_id ? 'Saving…' : 'Acknowledge'}</span>
                 </button>
               </div>
             )

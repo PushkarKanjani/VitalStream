@@ -129,13 +129,13 @@ export default function MedicationConsole() {
       <div className="mb-8">
         <div className="flex items-center gap-2 text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">
           <ShieldAlert className="w-4 h-4" />
-          <span>Branch 2A Core Feature · Clinical Decision Support</span>
+          <span>Medication Safety Check</span>
         </div>
         <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-          Pharmacological Safety & Allergy Interception Console
+          Medication & Allergy Safety
         </h2>
         <p className="text-sm text-slate-600 mt-1">
-          Tests the live MongoDB allergy validation engine. Synchronously blocks contraindicated medications before order commitment.
+          Checks patient allergies before prescribing medicine. Automatically blocks medicines the patient is allergic to.
         </p>
       </div>
 
@@ -146,7 +146,7 @@ export default function MedicationConsole() {
           <div className="app-card p-6 bg-white border border-slate-200">
             <h3 className="text-base font-bold text-slate-900 mb-4 flex items-center gap-2">
               <Pill className="w-4 h-4 text-blue-600" />
-              <span>Prescribe Medication with Real-Time Allergy Guard</span>
+              <span>Check & Prescribe Medication</span>
             </h3>
 
             <form onSubmit={handleOrderSubmit} className="space-y-4">
@@ -172,7 +172,7 @@ export default function MedicationConsole() {
                 </select>
               </div>
 
-              {/* Patient Dossier Snapshot */}
+              {/* Patient Summary Snapshot */}
               <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
                 <div>
                   <div className="text-xs font-bold text-slate-800">{selectedPatient.name}</div>
@@ -263,7 +263,7 @@ export default function MedicationConsole() {
                 disabled={loading}
                 className="w-full btn-solid-primary py-3 rounded-xl mt-2 text-sm"
               >
-                {loading ? 'Evaluating Contraindications…' : 'Verify & Prescribe Medication'}
+                {loading ? 'Checking Allergies…' : 'Check Allergies & Order Medicine'}
               </button>
             </form>
 
@@ -282,7 +282,7 @@ export default function MedicationConsole() {
                   )}
                   <div>
                     <h4 className="font-bold text-sm">
-                      {lastResult.success ? 'Order Approved & Stored in MongoDB' : 'Contraindication Intercepted by Safety Guard'}
+                      {lastResult.success ? 'Order Approved & Saved' : 'Blocked: Patient is Allergic to this Medicine'}
                     </h4>
                     <p className="text-xs mt-1 leading-relaxed opacity-90">
                       {lastResult.message}
@@ -302,7 +302,7 @@ export default function MedicationConsole() {
           <div className="app-card p-5 bg-white border border-slate-200">
             <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3 flex items-center gap-2">
               <Stethoscope className="w-4 h-4 text-blue-600" />
-              <span>Active Pharmacological Safety Mappings</span>
+              <span>Known Drug Allergies List</span>
             </h4>
             <div className="space-y-2 text-xs">
               <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">

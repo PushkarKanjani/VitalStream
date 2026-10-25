@@ -68,7 +68,7 @@ export default function BedBoard() {
         addToast({
           type: 'success',
           title: 'Bed Reserved Successfully',
-          message: `${modalBed} reserved for ${form.caseId}. ACID transaction committed.`,
+          message: `${modalBed} reserved for ${form.caseId}.`,
           duration: 4000
         })
 
@@ -138,10 +138,10 @@ export default function BedBoard() {
         <div>
           <h2 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
             <Bed className="w-4 h-4 text-blue-600" />
-            <span>Post-Anesthesia Recovery Bed Board</span>
+            <span>Recovery Bed Board</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            ACID-guaranteed allocations with MongoDB single-document WiredTiger locking
+            Live bed availability and instant conflict-free bed reservations
           </p>
         </div>
 
@@ -252,7 +252,7 @@ export default function BedBoard() {
             </div>
 
             <p className="text-xs text-slate-500 mb-4 leading-relaxed">
-              Executes atomic <code className="bg-slate-100 text-blue-600 px-1 py-0.5 rounded font-mono">findOneAndUpdate</code> to guarantee zero concurrent double-bookings.
+              Instantly reserves this recovery bed. Double-bookings are automatically blocked.
             </p>
 
             <form onSubmit={handleReserve} className="space-y-3.5">
@@ -278,7 +278,7 @@ export default function BedBoard() {
                   type="text"
                   value={form.reservedBy}
                   onChange={(e) => setForm(f => ({ ...f, reservedBy: e.target.value }))}
-                  placeholder="Nurse / MD Name"
+                  placeholder="Nurse / Staff Name"
                   className="app-input text-xs"
                   required
                 />
@@ -297,7 +297,7 @@ export default function BedBoard() {
                   disabled={reserving}
                   className="flex-1 btn-solid-primary py-2.5 text-xs rounded-xl"
                 >
-                  {reserving ? 'Acquiring Lock…' : 'Confirm Allocation'}
+                  {reserving ? 'Reserving…' : 'Reserve Bed'}
                 </button>
                 <button
                   type="button"

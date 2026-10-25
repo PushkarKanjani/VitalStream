@@ -115,7 +115,7 @@ function ORCard({ orId, onSelect }) {
 
       {/* Footer click hint */}
       <div className="mt-3 pt-2 text-[10px] text-slate-400 text-right group-hover:text-blue-600 font-medium transition-colors">
-        Click to inspect dossier →
+        Click to view details →
       </div>
     </div>
   )
@@ -134,26 +134,26 @@ export default function ORWall({ onSelectOr }) {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-            <span>Operating Room Suite</span>
+            <span>Operating Rooms</span>
             <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">
-              6 Active Suites
+              6 Rooms
             </span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Real-time intraoperative telemetry and vital status
+            Live patient vital signs and room status
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-xs font-semibold text-blue-700">
-            <span>{activeCount} In Procedure</span>
+            <span>{activeCount} Active Surgeries</span>
           </div>
           <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold ${
             alertCount > 0 
               ? 'bg-rose-50 border-rose-200 text-rose-700' 
               : 'bg-emerald-50 border-emerald-200 text-emerald-700'
           }`}>
-            <span>{alertCount} Critical Alerts</span>
+            <span>{alertCount} Alerts</span>
           </div>
         </div>
       </div>

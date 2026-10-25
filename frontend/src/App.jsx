@@ -105,7 +105,7 @@ function AppContent() {
                   Operating Room Command Center
                 </h1>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Synchronous multi-bed telemetry & rapid intervention console
+                  Live operating room vitals, active alerts, and recovery bed status
                 </p>
               </div>
 
@@ -114,7 +114,7 @@ function AppContent() {
                   { id: 'overview',  label: 'Overview' },
                   { id: 'waveforms', label: 'Waveforms' },
                   { id: 'beds',      label: 'Recovery Beds' },
-                  { id: 'alerts',    label: 'Incident Queue' },
+                  { id: 'alerts',    label: 'Alerts' },
                 ].map(sub => (
                   <button
                     key={sub.id}

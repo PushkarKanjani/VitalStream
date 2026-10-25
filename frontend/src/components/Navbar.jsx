@@ -36,9 +36,9 @@ export default function Navbar({ currentView, onViewChange, wsConnected }) {
   const NAV_ITEMS = [
     { id: 'landing',   label: 'Platform Overview', icon: Building2 },
     { id: 'command',   label: 'Command Center',    icon: Activity, badge: unackedAlerts > 0 ? unackedAlerts : null },
-    { id: 'meds',      label: 'Medication Safety', icon: Pill },
-    { id: 'audit',     label: 'Clinical Audit',    icon: FileText },
-    { id: 'cluster',   label: 'Cluster Health',    icon: Server },
+    { id: 'meds',      label: 'Medication Check',  icon: Pill },
+    { id: 'audit',     label: 'Activity Logs',     icon: FileText },
+    { id: 'cluster',   label: 'System Status',     icon: Server },
   ]
 
   return (
