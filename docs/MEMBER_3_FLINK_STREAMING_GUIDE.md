@@ -1,6 +1,6 @@
 # Member 3 Guide: Apache Flink Alert Detection & Escalation Engine
 
-> **Assigned Role:** Member 3  
+> **Assigned Role:** Member 3 — Yug Thakkar  
 > **Component Ownership:** Apache Flink Stream Processing, Stateful Alert Detection (`flink/jobs/alert_detection.py`), and 10-Minute Escalation Timers (`flink/jobs/escalation_timer.py`).  
 > **Estimated Completion Time:** 45 - 60 minutes.
 

@@ -1,6 +1,6 @@
 # Member 4 Guide: Cassandra Schema, TWCS Compaction & SLA Load Testing
 
-> **Assigned Role:** Member 4  
+> **Assigned Role:** Member 4 — Hemang Shreemali  
 > **Component Ownership:** Cassandra Time-Series Modeling (`scripts/init_cassandra.cql`), Compaction Tuning (`TimeWindowCompactionStrategy`), and High-Throughput Load Testing & SLA Benchmarking (`scripts/load_test.py`).  
 > **Estimated Completion Time:** 30 - 45 minutes.
 

@@ -65,7 +65,7 @@ Healthcare data falls into two fundamentally distinct categories:
 
 ---
 
-### Part 2: Member 2's Component (Kafka Producer Simulator & Cassandra Consumer)
+### Part 2: Sachi Shah's Component (Kafka Producer Simulator & Cassandra Consumer)
 
 #### Q4: Why did you partition Kafka topic `vitals.raw` by `or_id`?
 > **Answer:**  
@@ -77,7 +77,7 @@ Healthcare data falls into two fundamentally distinct categories:
 
 ---
 
-### Part 3: Member 3's Component (Apache Flink Streaming & Escalation Timers)
+### Part 3: Yug Thakkar's Component (Apache Flink Streaming & Escalation Timers)
 
 #### Q6: Explain how the 5-minute deduplication window in Flink works.
 > **Answer:**  
@@ -89,7 +89,7 @@ Healthcare data falls into two fundamentally distinct categories:
 
 ---
 
-### Part 4: Member 4's Component (Cassandra Schema, TWCS Compaction & SLA)
+### Part 4: Hemang Shreemali's Component (Cassandra Schema, TWCS Compaction & SLA)
 
 #### Q8: Why did you choose `TimeWindowCompactionStrategy` (TWCS) for Cassandra?
 > **Answer:**  
@@ -111,6 +111,6 @@ Healthcare data falls into two fundamentally distinct categories:
 |---|---|---|---|
 | **0:00 - 1:00** | **Pushkar Kanjani** | Show Dashboard at `http://localhost:5173` with 6 OR cards in light pastel aesthetic. | *"VitalStream is a perioperative command center. Here is our 6-bed OR grid showing real-time patient vitals. Notice the minimal clinical light aesthetic designed to eliminate ocular fatigue."* |
 | **1:00 - 2:00** | **Pushkar Kanjani** | Navigate to Bed Board, reserve bed `REC-1` for `CASE-001`. Try to reserve it again in another tab. | *"Now we demonstrate our ACID bed reservation. I book REC-1. If another nurse attempts to book REC-1 simultaneously, MongoDB's atomic `findOneAndUpdate` rejects it instantly with a 409 Conflict."* |
-| **2:00 - 3:00** | **Member 2** | Show Terminal running `monitor_sim.py` and `consumer_cassandra.py`. | *"Here is the VitalDB real surgical telemetry streaming into Kafka vitals.raw across 6 partitions, batched into Cassandra at over 150 rows/sec with LOCAL_ONE consistency."* |
-| **3:00 - 4:00** | **Member 3** | Show Flink UI at `localhost:8081` and trigger a low BP alert. | *"Apache Flink is reading the live Kafka stream. When systolic BP drops below 90, Flink evaluates the anomaly, applies a 5-minute deduplication window, and starts an internal 10-minute escalation timer."* |
-| **4:00 - 5:00** | **Member 4** | Show Cassandra CQLSH table description and run `python scripts/load_test.py`. | *"Finally, our Cassandra time-series storage uses TimeWindowCompactionStrategy to seal daily SSTables. Our benchmark shows p95 write latency of 4.88 ms, easily meeting our SLA target."* |
+| **2:00 - 3:00** | **Sachi Shah** | Show Terminal running `monitor_sim.py` and `consumer_cassandra.py`. | *"Here is the VitalDB real surgical telemetry streaming into Kafka vitals.raw across 6 partitions, batched into Cassandra at over 150 rows/sec with LOCAL_ONE consistency."* |
+| **3:00 - 4:00** | **Yug Thakkar** | Show Flink UI at `localhost:8081` and trigger a low BP alert. | *"Apache Flink is reading the live Kafka stream. When systolic BP drops below 90, Flink evaluates the anomaly, applies a 5-minute deduplication window, and starts an internal 10-minute escalation timer."* |
+| **4:00 - 5:00** | **Hemang Shreemali** | Show Cassandra CQLSH table description and run `python scripts/load_test.py`. | *"Finally, our Cassandra time-series storage uses TimeWindowCompactionStrategy to seal daily SSTables. Our benchmark shows p95 write latency of 4.88 ms, easily meeting our SLA target."* |

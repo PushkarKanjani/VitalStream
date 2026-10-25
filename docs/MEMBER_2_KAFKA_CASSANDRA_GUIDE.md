@@ -1,6 +1,6 @@
 # Member 2 Guide: Kafka Ingestion & Cassandra Consumer Pipeline
 
-> **Assigned Role:** Member 2  
+> **Assigned Role:** Member 2 — Sachi Shah  
 > **Component Ownership:** Kafka Streaming Infrastructure, VitalDB Producer Simulator (`simulator/monitor_sim.py`), and High-Throughput Cassandra Consumer (`backend/consumer/consumer_cassandra.py`).  
 > **Estimated Completion Time:** 45 - 60 minutes.
 

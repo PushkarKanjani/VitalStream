@@ -68,12 +68,12 @@ cd VitalStream
 cp .env.example .env
 ```
 
-### 2. Start all services (~45 min first run, Cassandra is slow)
+### 2. Start all services (~1-2 min on first run)
 ```bash
 docker-compose up -d
 ```
 
-### 3. Initialize Cassandra schema (after ~60s)
+### 3. Initialize Cassandra schema (after Cassandra is healthy)
 ```bash
 docker exec vs_cassandra cqlsh -f /scripts/init_cassandra.cql
 ```
@@ -83,13 +83,16 @@ docker exec vs_cassandra cqlsh -f /scripts/init_cassandra.cql
 cd backend
 python -m venv .venv && .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 5000
+uvicorn app.main:app --reload --port 8000
 ```
 
-### 5. Download VitalDB data & start simulator
+### 5. Seed demo data & start simulator
 ```bash
-python scripts/vitaldb_downloader.py   # ~5 min download
-python simulator/monitor_sim.py --ors 6 --speed 10x
+# Seed initial beds, patients, and operating cases
+python scripts/seed_demo_data.py
+
+# Stream live VitalDB surgery vitals into Kafka (6 ORs)
+python simulator/monitor_sim.py --ors 6 --speed 10
 ```
 
 ### 6. Start frontend
@@ -102,24 +105,25 @@ npm run dev
 
 ---
 
-## Team
+## Team & Project Ownership
 
-| Member | Roll No | Component |
-|--------|---------|-----------|
-| Pushkar Kanjani | 23BIT153 | MongoDB + FastAPI (cases, beds, orders, alerts) |
-| Member 2 | 23BIT___ | Kafka producer + Cassandra consumer |
-| Member 3 | 23BIT___ | Flink alert detection + escalation |
-| Member 4 | 23BIT___ | Time-series DB + load testing |
+| Member | Role | Component Ownership | Dedicated Guide |
+|---|---|---|---|
+| **Pushkar Kanjani** | Member 1 (Lead) | **MongoDB + FastAPI + React Dashboard**<br>ACID Bed Locks, Allergy Safety Engine, WebSockets | [Member 1 Guide](docs/TEAM_HANDOFF_GUIDE.md) |
+| **Sachi Shah** | Member 2 | **Kafka Streaming & Cassandra Consumer**<br>VitalDB Real-Time Stream (`vitals.raw`), Batch Ingestion | [Sachi's Guide](docs/MEMBER_2_KAFKA_CASSANDRA_GUIDE.md) |
+| **Yug Thakkar** | Member 3 | **Apache Flink Real-Time Alerts**<br>Anomaly Detection, 5-min Deduplication, 10-min Timers | [Yug's Guide](docs/MEMBER_3_FLINK_STREAMING_GUIDE.md) |
+| **Hemang Shreemali** | Member 4 | **Cassandra Time-Series Storage & SLA Testing**<br>TWCS Compaction, High-Throughput SLA Benchmark (<5ms) | [Hemang's Guide](docs/MEMBER_4_CASSANDRA_PERF_GUIDE.md) |
 
 ---
 
-## Ports
+## Ports & Endpoints
 
-| Service | URL |
-|---------|-----|
-| Frontend | http://localhost:5173 |
-| FastAPI | http://localhost:5000 |
-| Flink UI | http://localhost:8081 |
-| Kafdrop (Kafka UI) | http://localhost:9000 |
-| MongoDB | localhost:27017 |
-| Cassandra | localhost:9042 |
+| Service | URL / Port | Role |
+|---|---|---|
+| **Frontend Dashboard** | `http://localhost:5173` | React 18 Light Minimal Command Center |
+| **FastAPI Backend & Docs** | `http://localhost:8000` (`/docs`) | REST APIs + WebSocket Hub (`/ws`) |
+| **Flink Dashboard** | `http://localhost:8081` | Flink 1.18 JobManager & Stream Metrics |
+| **Kafdrop (Kafka UI)** | `http://localhost:9000` | Inspect Kafka Topics & Partitions |
+| **MongoDB 7.0** | `localhost:27017` | Document Store & ACID Transactions |
+| **Apache Cassandra 4.1** | `localhost:9042` | Time-Series Vital Telemetry Storage |
+

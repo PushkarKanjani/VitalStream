@@ -36,10 +36,10 @@
 
 | Member | Branch | Domain Ownership | Key Code Files | Target Sprint Duration |
 |---|---|---|---|---|
-| **Pushkar Kanjani** (23BIT153) | `main` / `branch-2a` | **MongoDB + FastAPI + Dashboard** | `backend/app/*`, `frontend/*`, `scripts/seed_demo_data.py` | **COMPLETED & PUSHED** |
-| **Member 2** | `branch-1-kafka-sim` | **Kafka Producer / VitalDB Sim + Cassandra Consumer** | `simulator/monitor_sim.py`, `backend/consumer/consumer_cassandra.py` | **45 - 60 mins** |
-| **Member 3** | `branch-3-flink` | **PyFlink Alert Detection + Escalation Timer** | `flink/jobs/alert_detection.py`, `flink/jobs/escalation_timer.py` | **45 - 60 mins** |
-| **Member 4** | `branch-4-cassandra` | **Cassandra Schema Optimization + Load Testing SLA** | `scripts/init_cassandra.cql`, `scripts/load_test.py` | **30 - 45 mins** |
+| **Pushkar Kanjani** (Lead) | `main` | **MongoDB + FastAPI + Dashboard** | `backend/app/*`, `frontend/*`, `scripts/seed_demo_data.py` | **COMPLETED & PUSHED** |
+| **Sachi Shah** (Member 2) | `member-2-kafka` | **Kafka Producer / VitalDB Sim + Cassandra Consumer** | `simulator/monitor_sim.py`, `backend/consumer/consumer_cassandra.py` | **45 - 60 mins** |
+| **Yug Thakkar** (Member 3) | `member-3-flink` | **PyFlink Alert Detection + Escalation Timer** | `flink/jobs/alert_detection.py`, `flink/jobs/escalation_timer.py` | **45 - 60 mins** |
+| **Hemang Shreemali** (Member 4) | `member-4-cassandra` | **Cassandra Schema Optimization + Load Testing SLA** | `scripts/init_cassandra.cql`, `scripts/load_test.py` | **30 - 45 mins** |
 
 ---
 
