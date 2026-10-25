@@ -15,6 +15,7 @@ Requires:
 
 import json
 import logging
+import math
 import os
 import time
 from datetime import datetime, date
@@ -33,12 +34,23 @@ logger = logging.getLogger(__name__)
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "localhost:9093")
 KAFKA_TOPIC     = os.getenv("KAFKA_TOPIC_VITALS", "vitals.raw")
 KAFKA_GROUP     = os.getenv("KAFKA_GROUP_ID", "vitalstream-consumer")
+KAFKA_RESET     = os.getenv("KAFKA_AUTO_OFFSET_RESET", "latest")
 CASS_HOST       = os.getenv("CASSANDRA_HOST", "localhost")
 CASS_PORT       = int(os.getenv("CASSANDRA_PORT", "9042"))
 CASS_KEYSPACE   = os.getenv("CASSANDRA_KEYSPACE", "vitalstream")
 
 BATCH_SIZE = 50        # rows per Cassandra batch
 REPORT_EVERY = 500     # log every N rows
+
+
+def to_float(val):
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        return None if (math.isnan(f) or math.isinf(f)) else round(f, 2)
+    except (ValueError, TypeError):
+        return None
 
 
 def connect_cassandra():
@@ -49,11 +61,12 @@ def connect_cassandra():
     cluster = Cluster(
         [CASS_HOST],
         port=CASS_PORT,
+        protocol_version=5,
         execution_profiles={EXEC_PROFILE_DEFAULT: profile}
     )
     session = cluster.connect(CASS_KEYSPACE)
     logger.info(f"✓ Cassandra connected ({CASS_HOST}:{CASS_PORT})")
-    return session
+    return cluster, session
 
 
 def prepare_statements(session):
@@ -76,14 +89,15 @@ def prepare_statements(session):
 
 
 def main():
-    session = connect_cassandra()
+    cluster, session = connect_cassandra()
     stmt_patient, stmt_or, stmt_latest = prepare_statements(session)
 
     consumer = KafkaConsumer(
         KAFKA_TOPIC,
         bootstrap_servers=KAFKA_BOOTSTRAP,
+        api_version=(2, 5, 0),
         group_id=KAFKA_GROUP,
-        auto_offset_reset="latest",
+        auto_offset_reset=KAFKA_RESET,
         enable_auto_commit=True,
         value_deserializer=lambda m: json.loads(m.decode("utf-8")),
         max_poll_records=200,
@@ -95,41 +109,59 @@ def main():
     total = 0
     t0 = time.time()
 
-    for msg in consumer:
-        v = msg.value
-        ts = datetime.fromisoformat(v["timestamp"])
-        d  = ts.date()
+    try:
+        for msg in consumer:
+            v = msg.value
+            ts = datetime.fromisoformat(v["timestamp"])
+            d  = ts.date()
 
-        batch.add(stmt_patient, (
-            v["patient_id"], d, ts,
-            v["or_id"],
-            v.get("hr"),  v.get("syst_bp"), v.get("dias_bp"),
-            v.get("o2_sat"), v.get("temp_c"), v.get("etco2"),
-            v.get("source", "vitaldb")
-        ))
-        batch.add(stmt_or, (
-            v["or_id"], d, ts, v["patient_id"],
-            v.get("hr"), v.get("syst_bp"), v.get("dias_bp"),
-            v.get("o2_sat"), v.get("temp_c")
-        ))
-        # Always upsert latest (single-row per OR)
-        session.execute(stmt_latest, (
-            v["or_id"], v["patient_id"], ts,
-            v.get("hr"), v.get("syst_bp"), v.get("dias_bp"),
-            v.get("o2_sat"), v.get("temp_c")
-        ))
+            hr = to_float(v.get("hr"))
+            syst_bp = to_float(v.get("syst_bp"))
+            dias_bp = to_float(v.get("dias_bp"))
+            o2_sat = to_float(v.get("o2_sat"))
+            temp_c = to_float(v.get("temp_c"))
+            etco2 = to_float(v.get("etco2"))
+            source = v.get("source", "vitaldb")
 
-        batch_count += 1
-        total += 1
+            batch.add(stmt_patient, (
+                v["patient_id"], d, ts,
+                v["or_id"],
+                hr, syst_bp, dias_bp,
+                o2_sat, temp_c, etco2,
+                source
+            ))
+            batch.add(stmt_or, (
+                v["or_id"], d, ts, v["patient_id"],
+                hr, syst_bp, dias_bp,
+                o2_sat, temp_c
+            ))
+            # Always upsert latest (single-row per OR)
+            session.execute(stmt_latest, (
+                v["or_id"], v["patient_id"], ts,
+                hr, syst_bp, dias_bp,
+                o2_sat, temp_c
+            ))
 
-        if batch_count >= BATCH_SIZE:
+            batch_count += 1
+            total += 1
+
+            if batch_count >= BATCH_SIZE:
+                session.execute(batch)
+                batch = BatchStatement(consistency_level=ConsistencyLevel.LOCAL_ONE)
+                batch_count = 0
+
+            if total % REPORT_EVERY == 0:
+                elapsed = time.time() - t0
+                logger.info(f"✓ {total} rows written | {total/max(0.001, elapsed):.1f} rows/sec")
+    except KeyboardInterrupt:
+        logger.info("Consumer stopping by user request...")
+    finally:
+        if batch_count > 0:
+            logger.info(f"Flushing final batch of {batch_count} records to Cassandra...")
             session.execute(batch)
-            batch = BatchStatement(consistency_level=ConsistencyLevel.LOCAL_ONE)
-            batch_count = 0
-
-        if total % REPORT_EVERY == 0:
-            elapsed = time.time() - t0
-            logger.info(f"✓ {total} rows written | {total/elapsed:.1f} rows/sec")
+        consumer.close()
+        cluster.shutdown()
+        logger.info(f"✓ Consumer terminated cleanly. Total rows written: {total}")
 
 
 if __name__ == "__main__":
