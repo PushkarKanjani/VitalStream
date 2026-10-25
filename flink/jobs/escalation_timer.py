@@ -16,15 +16,15 @@ from datetime import datetime, timezone, timedelta
 
 from pyflink.common import Types
 from pyflink.common.serialization import SimpleStringSchema
-from pyflink.datastream import StreamExecutionEnvironment, TimeCharacteristic
-from pyflink.datastream.connectors.kafka import FlinkKafkaConsumer
+from pyflink.common.watermark_strategy import WatermarkStrategy
+from pyflink.datastream import StreamExecutionEnvironment
+from pyflink.datastream.connectors.kafka import KafkaSource, KafkaOffsetsInitializer
 from pyflink.datastream.functions import KeyedProcessFunction
-from pyflink.datastream.timerservice import TimerService
 
 KAFKA_BOOTSTRAP  = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
 TOPIC_ALERTS_IN  = "alerts.raised"
 TOPIC_ALERTS_ACK = "alerts.acknowledged"
-MONGO_URI        = os.getenv("MONGO_URI", "mongodb://vsadmin:vspass2024@host.docker.internal:27017/vitalstream?authSource=admin")
+MONGO_URI        = os.getenv("MONGO_URI", "mongodb://vsadmin:vspass2024@mongodb:27017/vitalstream?authSource=admin")
 
 ESCALATION_DELAY_MS = 10 * 60 * 1000   # 10 minutes in milliseconds
 logging.basicConfig(level=logging.INFO)
@@ -71,6 +71,19 @@ class EscalationTimerFunction(KeyedProcessFunction):
         if self._acked.value():
             return   # already acknowledged — no escalation needed
 
+        # The REST API acknowledges alerts directly in MongoDB, so confirm there too.
+        try:
+            from pymongo import MongoClient
+            c = MongoClient(MONGO_URI, serverSelectionTimeoutMS=3000)
+            raw_doc = self._alert_doc.value()
+            aid = json.loads(raw_doc).get("alert_id") if raw_doc else None
+            doc = c["vitalstream"].alerts.find_one({"alert_id": aid}, {"acknowledged": 1})
+            c.close()
+            if doc and doc.get("acknowledged"):
+                return
+        except Exception as e:
+            print(f"[ESCALATION] ack check failed, escalating anyway: {e}")
+
         raw = self._alert_doc.value()
         if not raw:
             return
@@ -103,50 +116,48 @@ class EscalationTimerFunction(KeyedProcessFunction):
             print(f"[ESCALATION] MongoDB write failed: {e}")
 
 
+def _source(topic: str, group: str) -> KafkaSource:
+    return (
+        KafkaSource.builder()
+        .set_bootstrap_servers(KAFKA_BOOTSTRAP)
+        .set_topics(topic)
+        .set_group_id(group)
+        .set_starting_offsets(KafkaOffsetsInitializer.latest())
+        .set_value_only_deserializer(SimpleStringSchema())
+        .build()
+    )
+
+
+def _tag(event_type: str):
+    def fn(x):
+        try:
+            return json.dumps({**json.loads(x), "_event_type": event_type})
+        except Exception:
+            return json.dumps({"_event_type": "invalid"})
+    return fn
+
+
 def main():
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(1)
-    env.set_stream_time_characteristic(TimeCharacteristic.ProcessingTime)
 
     env.add_jars(
         "file:///opt/flink/lib/flink-sql-connector-kafka-3.1.0-1.18.jar"
     )
 
-    # Source 1: new alerts
-    alerts_source = FlinkKafkaConsumer(
-        topics=TOPIC_ALERTS_IN,
-        deserialization_schema=SimpleStringSchema(),
-        properties={
-            "bootstrap.servers": KAFKA_BOOTSTRAP,
-            "group.id": "flink-escalation-timer",
-            "auto.offset.reset": "latest",
-        }
-    )
-
-    # Source 2: acknowledgements
-    ack_source = FlinkKafkaConsumer(
-        topics=TOPIC_ALERTS_ACK,
-        deserialization_schema=SimpleStringSchema(),
-        properties={
-            "bootstrap.servers": KAFKA_BOOTSTRAP,
-            "group.id": "flink-escalation-ack",
-            "auto.offset.reset": "latest",
-        }
-    )
-
-    # Tag messages so the function knows which stream they came from
-    alerts_tagged = env.add_source(alerts_source).map(
-        lambda x: json.dumps({**json.loads(x), "_event_type": "raised"})
-    )
-    acks_tagged = env.add_source(ack_source).map(
-        lambda x: json.dumps({**json.loads(x), "_event_type": "acked"})
-    )
+    wm = WatermarkStrategy.no_watermarks()
+    alerts_tagged = env.from_source(
+        _source(TOPIC_ALERTS_IN, "flink-escalation-timer"), wm, "alerts.raised"
+    ).map(_tag("raised"), output_type=Types.STRING())
+    acks_tagged = env.from_source(
+        _source(TOPIC_ALERTS_ACK, "flink-escalation-ack"), wm, "alerts.acknowledged"
+    ).map(_tag("acked"), output_type=Types.STRING())
 
     # Union both streams, key by alert_id
     (
         alerts_tagged.union(acks_tagged)
-        .key_by(lambda x: json.loads(x).get("alert_id", "unknown"))
-        .process(EscalationTimerFunction())
+        .key_by(lambda x: json.loads(x).get("alert_id", "unknown"), key_type=Types.STRING())
+        .process(EscalationTimerFunction(), output_type=Types.STRING())
     )
 
     env.execute("VitalStream — Escalation Timer Job")
