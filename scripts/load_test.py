@@ -15,21 +15,35 @@ import statistics
 import time
 from datetime import datetime, date, timezone
 
+os.environ["CASS_DRIVER_NO_EXTENSIONS"] = "1"
+os.environ["CASS_DRIVER_NO_CYTHON"] = "1"
+
 from cassandra.cluster import Cluster, ExecutionProfile, EXEC_PROFILE_DEFAULT
-from cassandra.policies import DCAwareRoundRobinPolicy
+from cassandra.policies import DCAwareRoundRobinPolicy, AddressTranslator
 from cassandra.query import ConsistencyLevel
 from dotenv import load_dotenv
 
-try:  # asyncore (default reactor) was removed in Python 3.12
-    from cassandra.io.asyncioreactor import AsyncioConnection as _Conn
-except Exception:  # pragma: no cover
-    _Conn = None
+import sys
+
+_Conn = None
+if sys.version_info >= (3, 12):
+    try:
+        from cassandra.io.asyncioreactor import AsyncioConnection as _Conn
+    except Exception:
+        _Conn = None
 
 load_dotenv()
 
-CASS_HOST     = os.getenv("CASSANDRA_HOST", "localhost")
+_raw_host = os.getenv("CASSANDRA_HOST", "127.0.0.1")
+CASS_HOST     = "127.0.0.1" if _raw_host in ("localhost", "127.0.0.1") else _raw_host
 CASS_PORT     = int(os.getenv("CASSANDRA_PORT", "9042"))
 CASS_KEYSPACE = os.getenv("CASSANDRA_KEYSPACE", "vitalstream")
+
+
+class LocalhostTranslator(AddressTranslator):
+    """Translates internal container IP (172.x.x.x) to 127.0.0.1 for local host clients."""
+    def translate(self, addr):
+        return CASS_HOST if CASS_HOST in ("127.0.0.1", "localhost") else addr
 
 
 def connect():
@@ -38,6 +52,9 @@ def connect():
         consistency_level=ConsistencyLevel.LOCAL_ONE,
     )
     kwargs = {"connection_class": _Conn} if _Conn else {}
+    if CASS_HOST in ("127.0.0.1", "localhost"):
+        kwargs["address_translator"] = LocalhostTranslator()
+
     cluster = Cluster([CASS_HOST], port=CASS_PORT,
                       execution_profiles={EXEC_PROFILE_DEFAULT: profile}, **kwargs)
     return cluster.connect(CASS_KEYSPACE)
@@ -116,7 +133,7 @@ def main():
     p50, p95, p99 = pct(0.50), pct(0.95), pct(0.99)
     mean = statistics.mean(latencies)
 
-    print(f"\n✓ RESULTS")
+    print(f"\n[OK] RESULTS")
     print(f"  Total writes : {total_writes}")
     print(f"  Duration     : {elapsed:.1f}s")
     print(f"  Throughput   : {total_writes/elapsed:.1f} writes/sec")
@@ -128,7 +145,7 @@ def main():
 
     # Pass/fail
     ok = p95 < args.sla_ms
-    print(f"  SLA (p95 < {args.sla_ms:g}ms): {'✓ PASS' if ok else '✗ FAIL'}")
+    print(f"  SLA (p95 < {args.sla_ms:g}ms): {'PASS' if ok else 'FAIL'}")
     print(f"{'='*60}\n")
 
 
