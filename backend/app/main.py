@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import connect_mongo, disconnect_mongo, get_db
 from app.api import cases, beds, orders, alerts, patients, metrics
-from app.websocket_manager import ConnectionManager, change_stream_listener
+from app.websocket_manager import ConnectionManager, change_stream_listener, vitals_stream_worker
 
 logger = logging.getLogger("vitalstream")
 
@@ -33,6 +33,10 @@ async def lifespan(app: FastAPI):
     db = get_db()
     asyncio.create_task(change_stream_listener(db, manager))
     logger.info("✓ MongoDB change-stream listener started")
+
+    # Kick off live telemetry worker (Kafka vitals.raw + natural sinus rhythm)
+    asyncio.create_task(vitals_stream_worker(manager))
+    logger.info("✓ WebSocket vitals telemetry worker started")
 
     yield
 

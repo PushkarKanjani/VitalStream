@@ -105,6 +105,11 @@ def main():
     env.set_parallelism(1)
     env.add_jars(KAFKA_JAR)
 
+    cur_dir = os.path.dirname(os.path.abspath(__file__))
+    alert_logic_path = os.path.join(cur_dir, "alert_logic.py")
+    if os.path.exists(alert_logic_path):
+        env.add_python_file(alert_logic_path)
+
     source = (
         KafkaSource.builder()
         .set_bootstrap_servers(KAFKA_BOOTSTRAP)
