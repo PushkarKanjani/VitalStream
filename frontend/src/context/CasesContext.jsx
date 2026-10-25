@@ -3,10 +3,10 @@ import { createContext, useContext, useReducer, useCallback } from 'react'
 const CasesContext = createContext(null)
 
 const initialState = {
-  cases: {},        // keyed by or_id
-  beds: {},         // keyed by bed_id
-  alerts: [],       // unacknowledged alerts
-  vitals: {},       // latest vitals keyed by or_id
+  cases:  {},   // keyed by or_id
+  beds:   {},   // keyed by bed_id
+  alerts: [],   // all alerts (acked + unacked)
+  vitals: {},   // latest vitals keyed by or_id
 }
 
 function reducer(state, action) {
@@ -15,6 +15,8 @@ function reducer(state, action) {
       const c = action.payload
       return { ...state, cases: { ...state.cases, [c.or_id]: c } }
     }
+    case 'SET_INITIAL_CASES':
+      return { ...state, cases: action.payload }
     case 'BED_CHANGE': {
       const b = action.payload
       return { ...state, beds: { ...state.beds, [b.bed_id]: b } }
@@ -22,10 +24,8 @@ function reducer(state, action) {
     case 'ALERT_CHANGE': {
       const a = action.payload
       if (a.acknowledged) {
-        // Remove from unacked list
         return { ...state, alerts: state.alerts.filter(x => x.alert_id !== a.alert_id) }
       }
-      // Add or update
       const exists = state.alerts.find(x => x.alert_id === a.alert_id)
       if (exists) return state
       return { ...state, alerts: [a, ...state.alerts].slice(0, 100) }

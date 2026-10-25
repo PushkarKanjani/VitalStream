@@ -8,13 +8,23 @@ import PipelineHealth from './components/PipelineHealth'
 import VitalWaveform from './components/VitalWaveform'
 import './index.css'
 
+const TABS = [
+  { id: 'overview',  label: 'OR Overview',  icon: '◻' },
+  { id: 'alerts',    label: 'Alerts',        icon: '⚑' },
+  { id: 'beds',      label: 'Bed Board',     icon: '⊞' },
+  { id: 'waveforms', label: 'Waveforms',     icon: '∿' },
+  { id: 'pipeline',  label: 'Pipeline',      icon: '⊛' },
+]
+
 function AppInner() {
-  const { handleWsMessage, dispatch } = useCases()
+  const { handleWsMessage, dispatch, state } = useCases()
   const [tab, setTab] = useState('overview')
   const [wsConnected, setWsConnected] = useState(false)
+  const [wsError, setWsError] = useState(false)
 
   useWebSocket((msg) => {
     setWsConnected(true)
+    setWsError(false)
     handleWsMessage(msg)
   })
 
@@ -23,68 +33,145 @@ function AppInner() {
     fetch('/api/beds/').then(r => r.json()).then(beds => {
       const byId = Object.fromEntries(beds.map(b => [b.bed_id, b]))
       dispatch({ type: 'SET_INITIAL_BEDS', payload: byId })
-    }).catch(console.error)
+    }).catch(() => {})
 
     fetch('/api/alerts/unacknowledged').then(r => r.json()).then(alerts => {
       dispatch({ type: 'SET_INITIAL_ALERTS', payload: alerts })
-    }).catch(console.error)
+    }).catch(() => {})
+
+    fetch('/api/cases/active').then(r => r.json()).then(cases => {
+      const byOr = Object.fromEntries(cases.map(c => [c.or_id, c]))
+      dispatch({ type: 'SET_INITIAL_CASES', payload: byOr })
+    }).catch(() => {})
   }, [])
 
-  const TABS = ['overview', 'waveforms', 'beds', 'pipeline']
+  const unackedCount = state.alerts.filter(a => !a.acknowledged).length
 
   return (
-    <div className="min-h-screen bg-vs-bg">
-      {/* ── Navbar ────────────────────────────────────────────────────────── */}
-      <header className="border-b border-vs-border bg-vs-surface/80 backdrop-blur sticky top-0 z-40">
-        <div className="max-w-screen-xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-vs-red font-bold text-sm font-mono">●</span>
-            <span className="font-semibold text-vs-text">VitalStream</span>
-            <span className="text-xs text-vs-muted border border-vs-border rounded px-2 py-0.5">v1.0</span>
+    <div className="min-h-screen" style={{ background: '#F7F8FA' }}>
+
+      {/* ── Top header ─────────────────────────────────────────────────── */}
+      <header style={{
+        background: '#FFFFFF',
+        borderBottom: '1px solid #E4E7EE',
+        position: 'sticky',
+        top: 0,
+        zIndex: 40,
+      }}>
+        <div style={{ maxWidth: 1400, margin: '0 auto', padding: '0 24px' }}>
+
+          {/* Brand row */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 56 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: 8,
+                background: 'linear-gradient(135deg,#2563EB,#6B46C1)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <span style={{ color: '#fff', fontSize: 14, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>VS</span>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1A1D27', lineHeight: 1.1 }}>VitalStream</div>
+                <div style={{ fontSize: '0.65rem', color: '#8890A4', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Perioperative Command Center</div>
+              </div>
+            </div>
+
+            {/* Status indicators */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              {unackedCount > 0 && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  background: '#FDF0F2', border: '1px solid #F5C5CC',
+                  borderRadius: 20, padding: '4px 10px',
+                  cursor: 'pointer',
+                }} onClick={() => setTab('alerts')}>
+                  <span style={{ fontSize: 9, color: '#C7344C', animation: 'pulseAlert 1.4s infinite' }}>●</span>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#C7344C' }}>{unackedCount} Alert{unackedCount > 1 ? 's' : ''}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className={`status-dot ${wsConnected ? 'live' : 'idle'}`} />
+                <span style={{ fontSize: '0.75rem', color: '#8890A4' }}>
+                  {wsConnected ? 'Live' : 'Connecting…'}
+                </span>
+              </div>
+            </div>
           </div>
 
-          <nav className="flex gap-1">
-            {TABS.map(t => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`px-4 py-1.5 rounded text-sm capitalize transition-colors
-                  ${tab === t
-                    ? 'bg-vs-blue/20 text-vs-blue'
-                    : 'text-vs-muted hover:text-vs-text'}`}
-              >
-                {t}
-              </button>
-            ))}
+          {/* Tab nav */}
+          <nav style={{ display: 'flex', gap: 2, paddingBottom: 0 }}>
+            {TABS.map(t => {
+              const active = tab === t.id
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '8px 14px',
+                    border: 'none',
+                    borderBottom: active ? '2px solid #2563EB' : '2px solid transparent',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    fontSize: '0.82rem',
+                    fontWeight: active ? 600 : 400,
+                    color: active ? '#2563EB' : '#8890A4',
+                    transition: 'color 0.15s',
+                    marginBottom: -1,
+                    fontFamily: 'Inter, sans-serif',
+                    position: 'relative',
+                  }}
+                >
+                  <span style={{ fontSize: 10 }}>{t.icon}</span>
+                  {t.label}
+                  {t.id === 'alerts' && unackedCount > 0 && (
+                    <span style={{
+                      background: '#C7344C', color: '#fff',
+                      borderRadius: 10, padding: '1px 5px',
+                      fontSize: '0.62rem', fontWeight: 700,
+                      marginLeft: 2,
+                    }}>{unackedCount}</span>
+                  )}
+                </button>
+              )
+            })}
           </nav>
-
-          <div className="flex items-center gap-2 text-xs">
-            <span className={`status-dot ${wsConnected ? 'active' : 'alert'}`} />
-            <span className="text-vs-muted">{wsConnected ? 'Live' : 'Connecting…'}</span>
-          </div>
         </div>
       </header>
 
-      {/* ── Main content ──────────────────────────────────────────────────── */}
-      <main className="max-w-screen-xl mx-auto px-6 py-6">
+      {/* ── Main content ─────────────────────────────────────────────────── */}
+      <main style={{ maxWidth: 1400, margin: '0 auto', padding: '24px' }}>
+
         {tab === 'overview' && (
-          <div className="grid grid-cols-3 gap-6">
-            {/* Left 2/3 — OR grid */}
-            <div className="col-span-2 space-y-6">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <ORWall />
-              <AlertQueue />
             </div>
-            {/* Right 1/3 — sidebar */}
-            <div className="space-y-6">
-              <PipelineHealth />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <AlertQueue compact />
+              <PipelineHealth compact />
             </div>
           </div>
         )}
 
+        {tab === 'alerts' && (
+          <div style={{ maxWidth: 720 }}>
+            <AlertQueue />
+          </div>
+        )}
+
+        {tab === 'beds' && (
+          <div style={{ maxWidth: 780 }}>
+            <BedBoard />
+          </div>
+        )}
+
         {tab === 'waveforms' && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-vs-text">Live Vital Waveforms</h2>
-            <div className="grid grid-cols-2 gap-4">
+          <div>
+            <h2 style={{ fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#8890A4', marginBottom: 16 }}>
+              Live Vital Waveforms — All ORs
+            </h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
               {['OR-1','OR-2','OR-3','OR-4','OR-5','OR-6'].map(or => (
                 <VitalWaveform key={`${or}-hr`} orId={or} field="hr" />
               ))}
@@ -92,14 +179,8 @@ function AppInner() {
           </div>
         )}
 
-        {tab === 'beds' && (
-          <div className="max-w-2xl">
-            <BedBoard />
-          </div>
-        )}
-
         {tab === 'pipeline' && (
-          <div className="max-w-xl">
+          <div style={{ maxWidth: 640 }}>
             <PipelineHealth />
           </div>
         )}
