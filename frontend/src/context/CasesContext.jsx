@@ -2,12 +2,16 @@ import { createContext, useContext, useReducer, useCallback } from 'react'
 
 const CasesContext = createContext(null)
 
+const HISTORY_LEN = 20  // rolling HR history for 20-value window
+
 const initialState = {
   cases: {},         // keyed by or_id
   beds: {},          // keyed by bed_id
   alerts: [],        // all unacknowledged alerts
   vitals: {},        // latest vitals keyed by or_id
-  selectedOrId: null,// for case details drawer
+  vitalsHistory: {}, // rolling array of last HISTORY_LEN HR values per or_id
+  outlierLog: [],    // last 100 outlier events [{ts, or_id, metric, val, reason, severity}]
+  selectedOrId: null,
   auditLogs: [
     {
       id: 'AUD-001',
@@ -57,12 +61,41 @@ function reducer(state, action) {
         return { ...state, alerts: state.alerts.filter(x => x.alert_id !== a.alert_id) }
       }
       const exists = state.alerts.find(x => x.alert_id === a.alert_id)
-      if (exists) return state
+      if (exists) {
+        return {
+          ...state,
+          alerts: state.alerts.map(x => x.alert_id === a.alert_id ? { ...x, ...a } : x),
+        }
+      }
       return { ...state, alerts: [a, ...state.alerts].slice(0, 100) }
     }
     case 'VITALS_UPDATE': {
       const v = action.payload
-      return { ...state, vitals: { ...state.vitals, [v.or_id]: v } }
+      const orId = v.or_id
+      // Rolling HR history for sparklines
+      const prev = state.vitalsHistory[orId] || []
+      const nextHist = [...prev, v.hr != null ? v.hr : null].slice(-HISTORY_LEN)
+      // Append to outlier log if flagged
+      let outlierLog = state.outlierLog
+      if (v.is_outlier && v.outlier_reason) {
+        outlierLog = [
+          {
+            ts: v.timestamp || new Date().toISOString(),
+            or_id: orId,
+            metric: v.metric || 'hr',
+            val: v.val,
+            reason: v.outlier_reason,
+            severity: v.severity || 'CRITICAL',
+          },
+          ...outlierLog,
+        ].slice(0, 100)
+      }
+      return {
+        ...state,
+        vitals: { ...state.vitals, [orId]: v },
+        vitalsHistory: { ...state.vitalsHistory, [orId]: nextHist },
+        outlierLog,
+      }
     }
     case 'SET_INITIAL_BEDS':
       return { ...state, beds: action.payload }

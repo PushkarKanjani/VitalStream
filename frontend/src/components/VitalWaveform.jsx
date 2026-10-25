@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useCases } from '../context/CasesContext'
 import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
@@ -11,6 +11,8 @@ const METRIC_THEMES = {
 
 export default function VitalWaveform({ orId, field = 'hr', maxPoints = 20 }) {
   const { state } = useCases()
+  const [currentMetric, setCurrentMetric] = useState(field)
+
   const chartRef  = useRef(null)
   const uplotRef  = useRef(null)
   const dataRef   = useRef({ xs: [], ys: [] })
@@ -19,42 +21,44 @@ export default function VitalWaveform({ orId, field = 'hr', maxPoints = 20 }) {
   const isOutlier = Boolean(vitalsObj.is_outlier)
   const outlierReason = vitalsObj.outlier_reason || ''
 
-  const baseTheme = METRIC_THEMES[field] || METRIC_THEMES.hr
-  // Highlight stroke in critical red if an outlier is flagged
-  const theme = isOutlier
+  // Active alerts for this room
+  const activeAlert = state.alerts.find(a => a.or_id === orId && !a.acknowledged)
+
+  const baseTheme = METRIC_THEMES[currentMetric] || METRIC_THEMES.hr
+  // Highlight stroke in critical rose if an outlier or alert is active
+  const hasCritical = isOutlier || (activeAlert && activeAlert.severity === 'critical')
+  const theme = hasCritical
     ? { stroke: '#E11D48', fill: 'rgba(225, 29, 72, 0.12)', label: baseTheme.label, unit: baseTheme.unit }
     : baseTheme
 
-  // 1. Pre-fill fixed 20-value window immediately on mount so it never starts empty
+  // Reset data on metric switch or mount
   useEffect(() => {
-    if (dataRef.current.xs.length === 0) {
-      const now = Date.now() / 1000
-      const currentVal = vitalsObj[field] ?? (field === 'hr' ? 74 : field === 'syst_bp' ? 120 : 98.5)
-      const xs = []
-      const ys = []
-      for (let i = maxPoints - 1; i >= 0; i--) {
-        xs.push(now - i)
-        // Natural physiological variation across the fixed window
-        const sinusWave = Math.sin((maxPoints - i) * 0.45) * 1.8
-        ys.push(Number((currentVal + sinusWave).toFixed(1)))
-      }
-      dataRef.current = { xs, ys }
-      if (uplotRef.current) {
-        uplotRef.current.setData([Float64Array.from(xs), Float64Array.from(ys)])
-      }
+    const now = Date.now() / 1000
+    const fallbackVal = currentMetric === 'hr' ? 74 : currentMetric === 'syst_bp' ? 120 : 98.5
+    const currentVal = vitalsObj[currentMetric] ?? fallbackVal
+    const xs = []
+    const ys = []
+    for (let i = maxPoints - 1; i >= 0; i--) {
+      xs.push(now - i)
+      const sinusWave = Math.sin((maxPoints - i) * 0.45) * 1.5
+      ys.push(Number((currentVal + sinusWave).toFixed(1)))
     }
-  }, [orId, field, maxPoints])
+    dataRef.current = { xs, ys }
+    if (uplotRef.current) {
+      uplotRef.current.setData([Float64Array.from(xs), Float64Array.from(ys)])
+    }
+  }, [currentMetric, orId, maxPoints])
 
-  // 2. Iterate and slide over the fixed 20-value window as new vitals arrive
+  // Slide fixed 20-value window as vitals stream arrives
   useEffect(() => {
     const v = state.vitals[orId]
-    if (!v || v[field] == null) return
+    if (!v || v[currentMetric] == null) return
 
     const now = Date.now() / 1000
     dataRef.current.xs.push(now)
-    dataRef.current.ys.push(v[field])
+    dataRef.current.ys.push(v[currentMetric])
 
-    // Maintain fixed window size (exactly 20 points)
+    // Maintain fixed window size (exactly maxPoints)
     while (dataRef.current.xs.length > maxPoints) {
       dataRef.current.xs.shift()
       dataRef.current.ys.shift()
@@ -66,15 +70,15 @@ export default function VitalWaveform({ orId, field = 'hr', maxPoints = 20 }) {
         Float64Array.from(dataRef.current.ys),
       ])
     }
-  }, [state.vitals, orId, field, maxPoints])
+  }, [state.vitals, orId, currentMetric, maxPoints])
 
-  // Mount uPlot with clean light theme
+  // Mount uPlot
   useEffect(() => {
     if (!chartRef.current) return
 
     const opts = {
       width:  chartRef.current.offsetWidth || 380,
-      height: 90,
+      height: 95,
       cursor: { show: false },
       legend: { show: false },
       scales: { x: { time: true }, y: { auto: true } },
@@ -105,7 +109,7 @@ export default function VitalWaveform({ orId, field = 'hr', maxPoints = 20 }) {
 
     const handleResize = () => {
       if (uplotRef.current && chartRef.current) {
-        uplotRef.current.setSize({ width: chartRef.current.offsetWidth, height: 90 })
+        uplotRef.current.setSize({ width: chartRef.current.offsetWidth, height: 95 })
       }
     }
     window.addEventListener('resize', handleResize)
@@ -115,24 +119,54 @@ export default function VitalWaveform({ orId, field = 'hr', maxPoints = 20 }) {
       uplotRef.current?.destroy()
       uplotRef.current = null
     }
-  }, [field, theme])
+  }, [currentMetric, theme])
 
-  const latestVal = state.vitals[orId]?.[field]
+  const latestVal = state.vitals[orId]?.[currentMetric]
 
   return (
     <div
       className="card"
       style={{
         padding: '14px 16px',
-        background: isOutlier ? '#FFF5F5' : '#FFFFFF',
-        border: isOutlier ? '1.5px solid #F87171' : '1px solid #E2E8F0',
-        transition: 'all 0.3s ease'
+        background: isOutlier ? '#FFF5F5' : activeAlert ? '#FFFBEB' : '#FFFFFF',
+        border: isOutlier ? '1.5px solid #F87171' : activeAlert ? '1.5px solid #FCD34D' : '1px solid #E2E8F0',
+        transition: 'all 0.3s ease',
+        borderRadius: 12,
       }}
     >
+      {/* Top Header Row */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1A1D27' }}>{orId}</span>
-          <span style={{ fontSize: '0.72rem', color: '#8890A4' }}>{theme.label}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#1A1D27', fontFamily: 'monospace' }}>{orId}</span>
+
+          {/* Metric Selector Buttons */}
+          <div style={{ display: 'flex', background: '#F1F5F9', borderRadius: 6, padding: 2, gap: 2 }}>
+            {[
+              { id: 'hr', label: 'HR' },
+              { id: 'syst_bp', label: 'SBP' },
+              { id: 'o2_sat', label: 'SpO₂' },
+            ].map(m => (
+              <button
+                key={m.id}
+                onClick={() => setCurrentMetric(m.id)}
+                style={{
+                  padding: '1px 7px',
+                  borderRadius: 4,
+                  fontSize: '0.65rem',
+                  fontWeight: currentMetric === m.id ? 700 : 500,
+                  background: currentMetric === m.id ? '#FFFFFF' : 'transparent',
+                  color: currentMetric === m.id ? '#0F172A' : '#64748B',
+                  border: 'none',
+                  cursor: 'pointer',
+                  boxShadow: currentMetric === m.id ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                }}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Outlier Tag */}
           {isOutlier && (
             <span
               title={outlierReason}
@@ -151,23 +185,53 @@ export default function VitalWaveform({ orId, field = 'hr', maxPoints = 20 }) {
                 animation: 'pulse 1.8s infinite'
               }}
             >
-              🚨 OUTLIER FLAGGED
+              🚨 CASSANDRA OUTLIER
+            </span>
+          )}
+
+          {/* Active Alert Pill */}
+          {activeAlert && (
+            <span
+              style={{
+                background: activeAlert.severity === 'critical' ? '#FEE2E2' : '#FEF3C7',
+                color: activeAlert.severity === 'critical' ? '#B91C1C' : '#B45309',
+                border: `1px solid ${activeAlert.severity === 'critical' ? '#FCA5A5' : '#FDE68A'}`,
+                padding: '2px 7px',
+                borderRadius: 999,
+                fontSize: '0.65rem',
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 3,
+              }}
+            >
+              ⚠ {activeAlert.alert_type} ({activeAlert.severity.toUpperCase()})
             </span>
           )}
         </div>
+
+        {/* Live Value Display */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
-          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '1.25rem', fontWeight: 800, color: theme.stroke }}>
-            {latestVal != null ? (typeof latestVal === 'number' ? latestVal.toFixed(field === 'o2_sat' ? 1 : 0) : latestVal) : '—'}
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '1.3rem', fontWeight: 800, color: theme.stroke }}>
+            {latestVal != null ? (typeof latestVal === 'number' ? latestVal.toFixed(currentMetric === 'o2_sat' ? 1 : 0) : latestVal) : '—'}
           </span>
-          <span style={{ fontSize: '0.7rem', color: '#8890A4' }}>{theme.unit}</span>
+          <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>{theme.unit}</span>
         </div>
       </div>
-      <div ref={chartRef} style={{ width: '100%', minHeight: 90 }} />
-      {isOutlier && outlierReason && (
-        <div style={{ marginTop: 6, fontSize: '0.68rem', color: '#B91C1C', fontWeight: 500 }}>
+
+      {/* Chart Canvas */}
+      <div ref={chartRef} style={{ width: '100%', minHeight: 95 }} />
+
+      {/* Outlier / Alert Description Footer */}
+      {(isOutlier && outlierReason) ? (
+        <div style={{ marginTop: 6, fontSize: '0.68rem', color: '#B91C1C', fontWeight: 600 }}>
           {outlierReason}
         </div>
-      )}
+      ) : activeAlert ? (
+        <div style={{ marginTop: 6, fontSize: '0.68rem', color: '#B45309', fontWeight: 500 }}>
+          Active Alert: {activeAlert.message}
+        </div>
+      ) : null}
     </div>
   )
 }

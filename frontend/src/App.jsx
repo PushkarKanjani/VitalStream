@@ -13,6 +13,8 @@ import VitalWaveform from './components/VitalWaveform'
 import MedicationConsole from './components/MedicationConsole'
 import AuditReports from './components/AuditReports'
 import CaseDetailsDrawer from './components/CaseDetailsDrawer'
+import OutlierTicker from './components/OutlierTicker'
+import OutliersTable from './components/OutliersTable'
 
 import './index.css'
 
@@ -20,8 +22,8 @@ function AppContent() {
   const { handleWsMessage, dispatch, state } = useCases()
   const { addToast } = useToast()
 
-  const [currentView, setCurrentView] = useState('landing') // 'landing' | 'command' | 'meds' | 'audit' | 'cluster'
-  const [commandSubTab, setCommandSubTab] = useState('overview') // 'overview' | 'waveforms' | 'beds' | 'alerts'
+  const [currentView, setCurrentView] = useState('landing')
+  const [commandSubTab, setCommandSubTab] = useState('overview')
   const [wsConnected, setWsConnected] = useState(false)
   const [selectedOrForDrawer, setSelectedOrForDrawer] = useState(null)
 
@@ -41,7 +43,6 @@ function AppContent() {
 
   // Load baseline data on startup
   useEffect(() => {
-    // Beds
     fetch('/api/beds/')
       .then(r => r.json())
       .then(beds => {
@@ -52,7 +53,6 @@ function AppContent() {
       })
       .catch(() => {})
 
-    // Alerts
     fetch('/api/alerts/unacknowledged')
       .then(r => r.json())
       .then(alerts => {
@@ -62,7 +62,6 @@ function AppContent() {
       })
       .catch(() => {})
 
-    // Active Cases
     fetch('/api/cases/active')
       .then(r => r.json())
       .then(cases => {
@@ -74,6 +73,9 @@ function AppContent() {
       .catch(() => {})
   }, [dispatch])
 
+  // Outlier count badge for tab
+  const outlierCount = state.outlierLog?.length || 0
+
   return (
     <div className="min-h-screen bg-[#FAFBFD] text-slate-900 flex flex-col font-sans">
       
@@ -83,6 +85,9 @@ function AppContent() {
         onViewChange={(v) => setCurrentView(v)}
         wsConnected={wsConnected}
       />
+
+      {/* ── Cassandra Outlier Live Ticker (always visible in command view) ─── */}
+      {currentView === 'command' && <OutlierTicker />}
 
       {/* ── Main Application Body ─────────────────────────────────────────── */}
       <main className="flex-1">
@@ -115,14 +120,19 @@ function AppContent() {
                   { id: 'waveforms', label: 'Waveforms' },
                   { id: 'beds',      label: 'Recovery Beds' },
                   { id: 'alerts',    label: 'Alerts' },
+                  { id: 'outliers',  label: outlierCount > 0 ? `🚨 Outliers (${outlierCount})` : 'Outliers', danger: outlierCount > 0 },
                 ].map(sub => (
                   <button
                     key={sub.id}
                     onClick={() => setCommandSubTab(sub.id)}
                     className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                      commandSubTab === sub.id 
-                        ? 'bg-white text-slate-900 shadow-sm' 
-                        : 'text-slate-600 hover:text-slate-900'
+                      commandSubTab === sub.id
+                        ? sub.danger
+                          ? 'bg-rose-600 text-white shadow-sm'
+                          : 'bg-white text-slate-900 shadow-sm'
+                        : sub.danger
+                          ? 'text-rose-600 hover:text-rose-700 animate-pulse'
+                          : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     {sub.label}
@@ -131,10 +141,10 @@ function AppContent() {
               </div>
             </div>
 
-            {/* Sub-view: Overview Layout (OR Wall + Alert Queue & Bed Board Sidebar) */}
+            {/* Sub-view: Overview Layout */}
             {commandSubTab === 'overview' && (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                {/* Left 8 Columns: OR Suite Wall */}
+                {/* Left 8 Columns: OR Wall + Waveform */}
                 <div className="lg:col-span-8 space-y-6">
                   <ORWall 
                     onSelectOr={(orId) => setSelectedOrForDrawer(orId)} 
@@ -174,6 +184,13 @@ function AppContent() {
             {commandSubTab === 'alerts' && (
               <div className="max-w-3xl mx-auto">
                 <AlertQueue />
+              </div>
+            )}
+
+            {/* Sub-view: Cassandra Outlier Dashboard */}
+            {commandSubTab === 'outliers' && (
+              <div>
+                <OutliersTable />
               </div>
             )}
 

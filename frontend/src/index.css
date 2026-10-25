@@ -270,3 +270,19 @@ h1, h2, h3, h4, .font-heading {
 ::-webkit-scrollbar-thumb:hover {
   background: #94A3B8;
 }
+
+/* ── Outlier Ticker Scroll Animation ─────────────────────────────────────── */
+@keyframes ticker-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.ticker-track {
+  display: flex;
+  align-items: center;
+  will-change: transform;
+}
+
+.ticker-track:hover {
+  animation-play-state: paused !important;
+}
