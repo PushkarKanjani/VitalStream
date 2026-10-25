@@ -43,8 +43,56 @@ CASS_HOST       = "127.0.0.1" if _raw_host in ("localhost", "127.0.0.1") else _r
 CASS_PORT       = int(os.getenv("CASSANDRA_PORT", "9042"))
 CASS_KEYSPACE   = os.getenv("CASSANDRA_KEYSPACE", "vitalstream")
 
+from collections import defaultdict, deque
+import statistics
+
 BATCH_SIZE = 50        # rows per Cassandra batch
 REPORT_EVERY = 500     # log every N rows
+
+
+class WindowOutlierDetector:
+    """
+    Fixed-window outlier detector (10 to 20 values).
+    Iterates over a sliding buffer of the last 20 readings per metric per OR.
+    Flags readings that breach clinical safety thresholds or exceed 2.5 standard deviations.
+    """
+    def __init__(self, window_size: int = 20):
+        self.window_size = window_size
+        self.windows = defaultdict(lambda: deque(maxlen=self.window_size))
+
+    def evaluate(self, or_id: str, hr: float | None, syst_bp: float | None,
+                 dias_bp: float | None, o2_sat: float | None, temp_c: float | None):
+        """Returns (is_outlier, outlier_reason, metric, value, severity)."""
+        metrics = {
+            "hr": (hr, 45.0, 140.0, "Heart Rate"),
+            "syst_bp": (syst_bp, 75.0, 180.0, "Systolic BP"),
+            "o2_sat": (o2_sat, 85.0, 100.0, "Oxygen Saturation"),
+            "temp_c": (temp_c, 35.0, 39.5, "Temperature"),
+        }
+
+        for metric_name, (val, min_bound, max_bound, label) in metrics.items():
+            if val is None:
+                continue
+
+            buf = self.windows[(or_id, metric_name)]
+            buf.append(val)
+
+            # 1. Absolute clinical safety outlier threshold
+            if val < min_bound or val > max_bound:
+                reason = f"Clinical Outlier: {label} {val} outside bounds [{min_bound}, {max_bound}]"
+                return True, reason, metric_name, val, "CRITICAL"
+
+            # 2. Window-based statistical Z-score outlier (over 10-20 sample window)
+            if len(buf) >= 10:
+                mean = statistics.mean(buf)
+                stdev = statistics.stdev(buf)
+                if stdev > 0.01:
+                    z = abs(val - mean) / stdev
+                    if z >= 2.5:
+                        reason = f"Statistical Outlier: {label} {val} (Z-score: {z:.2f} > 2.5 over {len(buf)}-reading window)"
+                        return True, reason, metric_name, val, "WARNING"
+
+        return False, None, None, None, None
 
 
 class LocalhostTranslator(AddressTranslator):
@@ -86,25 +134,31 @@ def connect_cassandra():
 def prepare_statements(session):
     insert_by_patient = session.prepare("""
         INSERT INTO vitals_by_patient_day
-          (patient_id, reading_date, ts, or_id, hr, syst_bp, dias_bp, o2_sat, temp_c, etco2, raw_source)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (patient_id, reading_date, ts, or_id, hr, syst_bp, dias_bp, o2_sat, temp_c, etco2, raw_source, is_outlier, outlier_reason)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """)
     insert_by_or = session.prepare("""
         INSERT INTO vitals_by_or_day
-          (or_id, reading_date, ts, patient_id, hr, syst_bp, dias_bp, o2_sat, temp_c)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (or_id, reading_date, ts, patient_id, hr, syst_bp, dias_bp, o2_sat, temp_c, is_outlier, outlier_reason)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """)
     update_latest = session.prepare("""
         INSERT INTO latest_vitals_by_or
-          (or_id, patient_id, ts, hr, syst_bp, dias_bp, o2_sat, temp_c)
+          (or_id, patient_id, ts, hr, syst_bp, dias_bp, o2_sat, temp_c, is_outlier, outlier_reason)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """)
+    insert_outlier = session.prepare("""
+        INSERT INTO outliers_by_or
+          (or_id, reading_date, ts, patient_id, metric, val, outlier_reason, severity)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """)
-    return insert_by_patient, insert_by_or, update_latest
+    return insert_by_patient, insert_by_or, update_latest, insert_outlier
 
 
 def main():
     cluster, session = connect_cassandra()
-    stmt_patient, stmt_or, stmt_latest = prepare_statements(session)
+    stmt_patient, stmt_or, stmt_latest, stmt_outlier = prepare_statements(session)
+    detector = WindowOutlierDetector(window_size=20)
 
     consumer = KafkaConsumer(
         KAFKA_TOPIC,
@@ -121,6 +175,7 @@ def main():
     batch = BatchStatement(consistency_level=ConsistencyLevel.LOCAL_ONE)
     batch_count = 0
     total = 0
+    outliers_flagged = 0
     t0 = time.time()
 
     try:
@@ -137,23 +192,44 @@ def main():
             etco2 = to_float(v.get("etco2"))
             source = v.get("source", "vitaldb")
 
+            # Fixed-window Outlier Evaluation (iterating over 10-20 sample window)
+            is_outlier, reason, metric, val, severity = detector.evaluate(
+                v["or_id"], hr, syst_bp, dias_bp, o2_sat, temp_c
+            )
+
+            if is_outlier:
+                outliers_flagged += 1
+                logger.warning(f"🚨 [CASSANDRA OUTLIER FLAGGED] {v['or_id']} {reason}")
+                try:
+                    session.execute(stmt_outlier, (
+                        v["or_id"], d, ts, v["patient_id"], metric, val, reason, severity
+                    ))
+                except Exception as oe:
+                    logger.warning(f"Could not write to outliers_by_or: {oe}")
+
             batch.add(stmt_patient, (
                 v["patient_id"], d, ts,
                 v["or_id"],
                 hr, syst_bp, dias_bp,
                 o2_sat, temp_c, etco2,
-                source
+                source,
+                is_outlier,
+                reason
             ))
             batch.add(stmt_or, (
                 v["or_id"], d, ts, v["patient_id"],
                 hr, syst_bp, dias_bp,
-                o2_sat, temp_c
+                o2_sat, temp_c,
+                is_outlier,
+                reason
             ))
             # Always upsert latest (single-row per OR)
             session.execute(stmt_latest, (
                 v["or_id"], v["patient_id"], ts,
                 hr, syst_bp, dias_bp,
-                o2_sat, temp_c
+                o2_sat, temp_c,
+                is_outlier,
+                reason
             ))
 
             batch_count += 1

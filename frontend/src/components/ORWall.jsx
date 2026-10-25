@@ -105,6 +105,14 @@ function ORCard({ orId, onSelect }) {
         <ExternalLink className="w-3.5 h-3.5 text-slate-300 group-hover:text-blue-600 transition-colors shrink-0 ml-2" />
       </div>
 
+      {/* Flagged Outlier Alert Banner */}
+      {vitals.is_outlier && (
+        <div className="mb-2.5 px-2.5 py-1.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-semibold flex items-center gap-1.5 animate-pulse">
+          <span className="shrink-0">🚨</span>
+          <span className="truncate">Cassandra Outlier: {vitals.outlier_reason || 'Statistical anomaly detected'}</span>
+        </div>
+      )}
+
       {/* Real-time vitals row */}
       <div className="flex gap-2 flex-wrap">
         <VitalChip label="HR"   value={vitals.hr}      unit="bpm"  field="hr" />

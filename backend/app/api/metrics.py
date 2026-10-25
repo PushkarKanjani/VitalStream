@@ -72,3 +72,34 @@ async def kafka_metrics():
         sort=[("recorded_at", -1)]
     )
     return doc or {"component": "kafka", "status": "no data yet"}
+
+
+@router.get("/outliers")
+async def cassandra_outliers(limit: int = 20):
+    """Returns real-time outliers flagged by Cassandra."""
+    from datetime import date
+    try:
+        from consumer.consumer_cassandra import connect_cassandra
+        cluster, session = connect_cassandra()
+        rows = session.execute("""
+            SELECT or_id, reading_date, ts, patient_id, metric, val, outlier_reason, severity
+            FROM outliers_by_or
+            LIMIT %s
+        """, (limit,))
+        outliers = [
+            {
+                "or_id": r.or_id,
+                "reading_date": str(r.reading_date),
+                "ts": r.ts.isoformat() if r.ts else None,
+                "patient_id": r.patient_id,
+                "metric": r.metric,
+                "val": r.val,
+                "outlier_reason": r.outlier_reason,
+                "severity": r.severity,
+            }
+            for r in rows
+        ]
+        cluster.shutdown()
+        return {"count": len(outliers), "outliers": outliers}
+    except Exception as e:
+        return {"count": 0, "outliers": [], "error": str(e)}

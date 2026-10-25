@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS vitals_by_patient_day (
     temp_c       FLOAT,       -- temperature (°C)
     etco2        FLOAT,       -- end-tidal CO2 (mmHg), nullable
     raw_source   TEXT,        -- 'vitaldb' or 'synthetic'
+    is_outlier   BOOLEAN,     -- true if statistical or clinical outlier detected
+    outlier_reason TEXT,      -- description of why flagged as outlier
     PRIMARY KEY ((patient_id, reading_date), ts)
 ) WITH CLUSTERING ORDER BY (ts DESC)
   AND default_time_to_live = 2592000  -- 30-day TTL
@@ -47,6 +49,8 @@ CREATE TABLE IF NOT EXISTS vitals_by_or_day (
     dias_bp      FLOAT,
     o2_sat       FLOAT,
     temp_c       FLOAT,
+    is_outlier   BOOLEAN,
+    outlier_reason TEXT,
     PRIMARY KEY ((or_id, reading_date), ts)
 ) WITH CLUSTERING ORDER BY (ts DESC)
   AND default_time_to_live = 86400    -- 1-day TTL (live dashboard only)
@@ -72,15 +76,31 @@ CREATE TABLE IF NOT EXISTS waveform_30min (
 -- ── MATERIALIZED: Latest reading per OR ──────────────────────────────────────
 -- Used by the OR-wall dashboard to show the latest snapshot without ALLOW FILTERING
 CREATE TABLE IF NOT EXISTS latest_vitals_by_or (
-    or_id      TEXT PRIMARY KEY,
-    patient_id TEXT,
-    ts         TIMESTAMP,
-    hr         FLOAT,
-    syst_bp    FLOAT,
-    dias_bp    FLOAT,
-    o2_sat     FLOAT,
-    temp_c     FLOAT
+    or_id          TEXT PRIMARY KEY,
+    patient_id     TEXT,
+    ts             TIMESTAMP,
+    hr             FLOAT,
+    syst_bp        FLOAT,
+    dias_bp        FLOAT,
+    o2_sat         FLOAT,
+    temp_c         FLOAT,
+    is_outlier     BOOLEAN,
+    outlier_reason TEXT
 );
+
+-- ── OUTLIERS DETECTED TABLE ──────────────────────────────────────────────────
+-- Partitioned by (or_id, reading_date) for instant retrieval of flagged anomalies
+CREATE TABLE IF NOT EXISTS outliers_by_or (
+    or_id          TEXT,
+    reading_date   DATE,
+    ts             TIMESTAMP,
+    patient_id     TEXT,
+    metric         TEXT,
+    val            FLOAT,
+    outlier_reason TEXT,
+    severity       TEXT,
+    PRIMARY KEY ((or_id, reading_date), ts)
+) WITH CLUSTERING ORDER BY (ts DESC);
 
 -- ── INDEXES ───────────────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS ON vitals_by_patient_day (or_id);
