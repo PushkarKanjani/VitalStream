@@ -6,7 +6,7 @@ RUN apt-get update -y && \
     ln -sf /usr/bin/python3 /usr/bin/python && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --no-cache-dir apache-flink==1.18.1 pymongo
+RUN pip3 install --no-cache-dir --default-timeout=300 --retries 10 apache-flink==1.18.1 pymongo
 
 # Kafka connector for the DataStream API (must match Flink 1.18)
 RUN wget -q -O /opt/flink/lib/flink-sql-connector-kafka-3.1.0-1.18.jar \
