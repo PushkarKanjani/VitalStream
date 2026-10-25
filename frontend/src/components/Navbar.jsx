@@ -98,14 +98,14 @@ export default function Navbar({ currentView, onViewChange, wsConnected }) {
             )}
           </button>
 
-          {/* User Profile Pill */}
+          {/* Clinical Staff Indicator */}
           <div className="flex items-center gap-2.5 pl-3 border-l border-slate-200">
-            <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 font-semibold text-xs">
-              PK
+            <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 font-semibold text-xs">
+              <User className="w-4 h-4" />
             </div>
             <div className="hidden lg:block text-left">
-              <div className="text-xs font-bold text-slate-800 leading-tight">Dr. Pushkar Kanjani</div>
-              <div className="text-[10px] text-slate-500 font-medium">Attending Anesthesiologist</div>
+              <div className="text-xs font-bold text-slate-800 leading-tight">Clinical Staff</div>
+              <div className="text-[10px] text-slate-500 font-medium">Perioperative Care Team</div>
             </div>
           </div>
 

@@ -89,7 +89,7 @@ export default function CaseDetailsDrawer({ orId, onClose, onOpenMedConsole }) {
                 </div>
                 <div className="flex items-center gap-2.5 text-xs text-slate-700">
                   <User className="w-4 h-4 text-indigo-600 shrink-0" />
-                  <span>Anesthesiologist: <strong>Dr. Pushkar Kanjani, MD</strong></span>
+                  <span>Anesthesiologist: <strong>{caseInfo?.anesthesiologist || 'Attending Anesthesiologist'}</strong></span>
                 </div>
                 <div className="flex items-center gap-2.5 text-xs text-slate-700">
                   <Clock className="w-4 h-4 text-slate-400 shrink-0" />

@@ -175,7 +175,7 @@ export default function LandingPage({ onLaunchCommandCenter }) {
                 </p>
               </div>
               <div className="mt-6 pt-4 border-t border-slate-100 flex items-center text-xs font-medium text-indigo-600">
-                <span>Pushkar's Core Engine</span>
+                <span>Branch 2A: Transactional Core</span>
               </div>
             </div>
           </div>
@@ -249,9 +249,9 @@ export default function LandingPage({ onLaunchCommandCenter }) {
             <span>— Perioperative Clinical Command Platform</span>
           </div>
           <div className="flex items-center gap-6">
-            <span>Pushkar Kanjani (23BIT153)</span>
+            <span>VitalStream Engineering Suite</span>
             <span>•</span>
-            <span>Big Data Analytics Final Project</span>
+            <span>Big Data Analytics Project</span>
           </div>
         </div>
       </footer>

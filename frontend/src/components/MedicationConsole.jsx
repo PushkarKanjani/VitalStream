@@ -55,7 +55,7 @@ export default function MedicationConsole() {
       medication: selectedMed,
       dose_mg: parseFloat(dosage) || 500.0,
       route: route,
-      ordered_by: 'Dr. Pushkar Kanjani',
+      ordered_by: 'Attending Clinician',
     }
 
     try {
@@ -85,7 +85,7 @@ export default function MedicationConsole() {
             timestamp: new Date().toISOString(),
             action: 'ALLERGY_GUARD_INTERCEPT',
             entity: `${selectedMed} (${dosage})`,
-            actor: 'Dr. Pushkar Kanjani',
+            actor: 'Attending Clinician',
             status: 'blocked',
             detail: errorMsg
           }
@@ -109,7 +109,7 @@ export default function MedicationConsole() {
             timestamp: new Date().toISOString(),
             action: 'MEDICATION_ORDER_COMMITTED',
             entity: `${selectedMed} (${dosage})`,
-            actor: 'Dr. Pushkar Kanjani',
+            actor: 'Attending Clinician',
             status: 'success',
             detail: `Allergy check passed. Written to MongoDB orders collection.`
           }
