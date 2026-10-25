@@ -1,198 +1,227 @@
 import { useEffect, useState } from 'react'
 import { CasesProvider, useCases } from './context/CasesContext'
-import { useWebSocket }            from './hooks/useWebSocket'
-import ORWall        from './components/ORWall'
-import AlertQueue    from './components/AlertQueue'
-import BedBoard      from './components/BedBoard'
+import { ToastProvider, useToast } from './context/ToastContext'
+import { useWebSocket } from './hooks/useWebSocket'
+
+import Navbar from './components/Navbar'
+import LandingPage from './components/LandingPage'
+import ORWall from './components/ORWall'
+import AlertQueue from './components/AlertQueue'
+import BedBoard from './components/BedBoard'
 import PipelineHealth from './components/PipelineHealth'
 import VitalWaveform from './components/VitalWaveform'
+import MedicationConsole from './components/MedicationConsole'
+import AuditReports from './components/AuditReports'
+import CaseDetailsDrawer from './components/CaseDetailsDrawer'
+
 import './index.css'
 
-const TABS = [
-  { id: 'overview',  label: 'OR Overview',  icon: '◻' },
-  { id: 'alerts',    label: 'Alerts',        icon: '⚑' },
-  { id: 'beds',      label: 'Bed Board',     icon: '⊞' },
-  { id: 'waveforms', label: 'Waveforms',     icon: '∿' },
-  { id: 'pipeline',  label: 'Pipeline',      icon: '⊛' },
-]
-
-function AppInner() {
+function AppContent() {
   const { handleWsMessage, dispatch, state } = useCases()
-  const [tab, setTab] = useState('overview')
-  const [wsConnected, setWsConnected] = useState(false)
-  const [wsError, setWsError] = useState(false)
+  const { addToast } = useToast()
 
+  const [currentView, setCurrentView] = useState('landing') // 'landing' | 'command' | 'meds' | 'audit' | 'cluster'
+  const [commandSubTab, setCommandSubTab] = useState('overview') // 'overview' | 'waveforms' | 'beds' | 'alerts'
+  const [wsConnected, setWsConnected] = useState(false)
+  const [selectedOrForDrawer, setSelectedOrForDrawer] = useState(null)
+
+  // Real-time WebSocket connection
   useWebSocket((msg) => {
-    setWsConnected(true)
-    setWsError(false)
+    if (!wsConnected) {
+      setWsConnected(true)
+      addToast({
+        type: 'info',
+        title: 'Telemetry Stream Synced',
+        message: 'Live connection to Kafka & MongoDB Change Streams established.',
+        duration: 3000
+      })
+    }
     handleWsMessage(msg)
   })
 
-  // Load initial data on mount
+  // Load baseline data on startup
   useEffect(() => {
-    fetch('/api/beds/').then(r => r.json()).then(beds => {
-      const byId = Object.fromEntries(beds.map(b => [b.bed_id, b]))
-      dispatch({ type: 'SET_INITIAL_BEDS', payload: byId })
-    }).catch(() => {})
+    // Beds
+    fetch('/api/beds/')
+      .then(r => r.json())
+      .then(beds => {
+        if (Array.isArray(beds)) {
+          const byId = Object.fromEntries(beds.map(b => [b.bed_id, b]))
+          dispatch({ type: 'SET_INITIAL_BEDS', payload: byId })
+        }
+      })
+      .catch(() => {})
 
-    fetch('/api/alerts/unacknowledged').then(r => r.json()).then(alerts => {
-      dispatch({ type: 'SET_INITIAL_ALERTS', payload: alerts })
-    }).catch(() => {})
+    // Alerts
+    fetch('/api/alerts/unacknowledged')
+      .then(r => r.json())
+      .then(alerts => {
+        if (Array.isArray(alerts)) {
+          dispatch({ type: 'SET_INITIAL_ALERTS', payload: alerts })
+        }
+      })
+      .catch(() => {})
 
-    fetch('/api/cases/active').then(r => r.json()).then(cases => {
-      const byOr = Object.fromEntries(cases.map(c => [c.or_id, c]))
-      dispatch({ type: 'SET_INITIAL_CASES', payload: byOr })
-    }).catch(() => {})
-  }, [])
-
-  const unackedCount = state.alerts.filter(a => !a.acknowledged).length
+    // Active Cases
+    fetch('/api/cases/active')
+      .then(r => r.json())
+      .then(cases => {
+        if (Array.isArray(cases)) {
+          const byOr = Object.fromEntries(cases.map(c => [c.or_id, c]))
+          dispatch({ type: 'SET_INITIAL_CASES', payload: byOr })
+        }
+      })
+      .catch(() => {})
+  }, [dispatch])
 
   return (
-    <div className="min-h-screen" style={{ background: '#F7F8FA' }}>
+    <div className="min-h-screen bg-[#FAFBFD] text-slate-900 flex flex-col font-sans">
+      
+      {/* ── Global Production Header ───────────────────────────────────────── */}
+      <Navbar
+        currentView={currentView}
+        onViewChange={(v) => setCurrentView(v)}
+        wsConnected={wsConnected}
+      />
 
-      {/* ── Top header ─────────────────────────────────────────────────── */}
-      <header style={{
-        background: '#FFFFFF',
-        borderBottom: '1px solid #E4E7EE',
-        position: 'sticky',
-        top: 0,
-        zIndex: 40,
-      }}>
-        <div style={{ maxWidth: 1400, margin: '0 auto', padding: '0 24px' }}>
+      {/* ── Main Application Body ─────────────────────────────────────────── */}
+      <main className="flex-1">
+        
+        {/* VIEW 1: Platform Overview / Landing Presentation */}
+        {currentView === 'landing' && (
+          <LandingPage
+            onLaunchCommandCenter={() => setCurrentView('command')}
+          />
+        )}
 
-          {/* Brand row */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 56 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{
-                width: 32, height: 32, borderRadius: 8,
-                background: 'linear-gradient(135deg,#2563EB,#6B46C1)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <span style={{ color: '#fff', fontSize: 14, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>VS</span>
-              </div>
+        {/* VIEW 2: Clinical Command Center Suite */}
+        {currentView === 'command' && (
+          <div className="max-w-7xl mx-auto px-6 py-6 animate-enter">
+            
+            {/* Command Suite Sub-Navigation */}
+            <div className="flex items-center justify-between border-b border-slate-200 pb-4 mb-6">
               <div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1A1D27', lineHeight: 1.1 }}>VitalStream</div>
-                <div style={{ fontSize: '0.65rem', color: '#8890A4', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Perioperative Command Center</div>
+                <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">
+                  Operating Room Command Center
+                </h1>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Synchronous multi-bed telemetry & rapid intervention console
+                </p>
+              </div>
+
+              <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200 text-xs">
+                {[
+                  { id: 'overview',  label: 'Overview' },
+                  { id: 'waveforms', label: 'Waveforms' },
+                  { id: 'beds',      label: 'Recovery Beds' },
+                  { id: 'alerts',    label: 'Incident Queue' },
+                ].map(sub => (
+                  <button
+                    key={sub.id}
+                    onClick={() => setCommandSubTab(sub.id)}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
+                      commandSubTab === sub.id 
+                        ? 'bg-white text-slate-900 shadow-sm' 
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {sub.label}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Status indicators */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              {unackedCount > 0 && (
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  background: '#FDF0F2', border: '1px solid #F5C5CC',
-                  borderRadius: 20, padding: '4px 10px',
-                  cursor: 'pointer',
-                }} onClick={() => setTab('alerts')}>
-                  <span style={{ fontSize: 9, color: '#C7344C', animation: 'pulseAlert 1.4s infinite' }}>●</span>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#C7344C' }}>{unackedCount} Alert{unackedCount > 1 ? 's' : ''}</span>
+            {/* Sub-view: Overview Layout (OR Wall + Alert Queue & Bed Board Sidebar) */}
+            {commandSubTab === 'overview' && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Left 8 Columns: OR Suite Wall */}
+                <div className="lg:col-span-8 space-y-6">
+                  <ORWall 
+                    onSelectOr={(orId) => setSelectedOrForDrawer(orId)} 
+                  />
+                  <div className="pt-2">
+                    <VitalWaveform orId="OR-1" field="hr" />
+                  </div>
                 </div>
-              )}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span className={`status-dot ${wsConnected ? 'live' : 'idle'}`} />
-                <span style={{ fontSize: '0.75rem', color: '#8890A4' }}>
-                  {wsConnected ? 'Live' : 'Connecting…'}
-                </span>
+
+                {/* Right 4 Columns: Side Quick Panels */}
+                <div className="lg:col-span-4 space-y-6">
+                  <AlertQueue compact />
+                  <BedBoard />
+                </div>
               </div>
-            </div>
-          </div>
+            )}
 
-          {/* Tab nav */}
-          <nav style={{ display: 'flex', gap: 2, paddingBottom: 0 }}>
-            {TABS.map(t => {
-              const active = tab === t.id
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '8px 14px',
-                    border: 'none',
-                    borderBottom: active ? '2px solid #2563EB' : '2px solid transparent',
-                    background: 'transparent',
-                    cursor: 'pointer',
-                    fontSize: '0.82rem',
-                    fontWeight: active ? 600 : 400,
-                    color: active ? '#2563EB' : '#8890A4',
-                    transition: 'color 0.15s',
-                    marginBottom: -1,
-                    fontFamily: 'Inter, sans-serif',
-                    position: 'relative',
-                  }}
-                >
-                  <span style={{ fontSize: 10 }}>{t.icon}</span>
-                  {t.label}
-                  {t.id === 'alerts' && unackedCount > 0 && (
-                    <span style={{
-                      background: '#C7344C', color: '#fff',
-                      borderRadius: 10, padding: '1px 5px',
-                      fontSize: '0.62rem', fontWeight: 700,
-                      marginLeft: 2,
-                    }}>{unackedCount}</span>
-                  )}
-                </button>
-              )
-            })}
-          </nav>
-        </div>
-      </header>
+            {/* Sub-view: High-Res Waveforms Grid */}
+            {commandSubTab === 'waveforms' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {['OR-1','OR-2','OR-3','OR-4','OR-5','OR-6'].map(or => (
+                    <VitalWaveform key={`${or}-hr`} orId={or} field="hr" />
+                  ))}
+                </div>
+              </div>
+            )}
 
-      {/* ── Main content ─────────────────────────────────────────────────── */}
-      <main style={{ maxWidth: 1400, margin: '0 auto', padding: '24px' }}>
+            {/* Sub-view: Dedicated Bed Allocation Board */}
+            {commandSubTab === 'beds' && (
+              <div className="max-w-4xl mx-auto">
+                <BedBoard />
+              </div>
+            )}
 
-        {tab === 'overview' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <ORWall />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <AlertQueue compact />
-              <PipelineHealth compact />
-            </div>
+            {/* Sub-view: Dedicated Alert Incident Queue */}
+            {commandSubTab === 'alerts' && (
+              <div className="max-w-3xl mx-auto">
+                <AlertQueue />
+              </div>
+            )}
+
           </div>
         )}
 
-        {tab === 'alerts' && (
-          <div style={{ maxWidth: 720 }}>
-            <AlertQueue />
+        {/* VIEW 3: Pharmacological Safety Console */}
+        {currentView === 'meds' && (
+          <div className="animate-enter">
+            <MedicationConsole />
           </div>
         )}
 
-        {tab === 'beds' && (
-          <div style={{ maxWidth: 780 }}>
-            <BedBoard />
+        {/* VIEW 4: Clinical Governance & Safety Audit Trail */}
+        {currentView === 'audit' && (
+          <div className="animate-enter">
+            <AuditReports />
           </div>
         )}
 
-        {tab === 'waveforms' && (
-          <div>
-            <h2 style={{ fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#8890A4', marginBottom: 16 }}>
-              Live Vital Waveforms — All ORs
-            </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
-              {['OR-1','OR-2','OR-3','OR-4','OR-5','OR-6'].map(or => (
-                <VitalWaveform key={`${or}-hr`} orId={or} field="hr" />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {tab === 'pipeline' && (
-          <div style={{ maxWidth: 640 }}>
+        {/* VIEW 5: Cluster Architecture & Pipeline Health */}
+        {currentView === 'cluster' && (
+          <div className="max-w-4xl mx-auto px-6 py-8 animate-enter">
             <PipelineHealth />
           </div>
         )}
+
       </main>
+
+      {/* ── Slide-over Case Details Dossier Drawer ─────────────────────────── */}
+      {selectedOrForDrawer && (
+        <CaseDetailsDrawer
+          orId={selectedOrForDrawer}
+          onClose={() => setSelectedOrForDrawer(null)}
+          onOpenMedConsole={() => setCurrentView('meds')}
+        />
+      )}
+
     </div>
   )
 }
 
 export default function App() {
   return (
-    <CasesProvider>
-      <AppInner />
-    </CasesProvider>
+    <ToastProvider>
+      <CasesProvider>
+        <AppContent />
+      </CasesProvider>
+    </ToastProvider>
   )
 }

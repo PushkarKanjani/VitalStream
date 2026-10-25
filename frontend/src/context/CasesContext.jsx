@@ -3,10 +3,40 @@ import { createContext, useContext, useReducer, useCallback } from 'react'
 const CasesContext = createContext(null)
 
 const initialState = {
-  cases:  {},   // keyed by or_id
-  beds:   {},   // keyed by bed_id
-  alerts: [],   // all alerts (acked + unacked)
-  vitals: {},   // latest vitals keyed by or_id
+  cases: {},         // keyed by or_id
+  beds: {},          // keyed by bed_id
+  alerts: [],        // all unacknowledged alerts
+  vitals: {},        // latest vitals keyed by or_id
+  selectedOrId: null,// for case details drawer
+  auditLogs: [
+    {
+      id: 'AUD-001',
+      timestamp: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
+      action: 'SYSTEM_BOOT',
+      entity: 'Cluster Orchestration',
+      actor: 'System Daemon',
+      status: 'success',
+      detail: 'Kafka (6 partitions), Cassandra, MongoDB WiredTiger, and Flink connected.'
+    },
+    {
+      id: 'AUD-002',
+      timestamp: new Date(Date.now() - 1000 * 60 * 12).toISOString(),
+      action: 'BED_ALLOCATION',
+      entity: 'Bed REC-1',
+      actor: 'Charge Nurse Sarah',
+      status: 'success',
+      detail: 'ACID findOneAndUpdate reservation committed for CASE-001.'
+    },
+    {
+      id: 'AUD-003',
+      timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
+      action: 'ALLERGY_GUARD_INTERCEPT',
+      entity: 'Medication Order',
+      actor: 'Dr. Evans',
+      status: 'blocked',
+      detail: 'Blocked Amoxicillin order — patient record documents severe Penicillin allergy.'
+    }
+  ]
 }
 
 function reducer(state, action) {
@@ -38,6 +68,10 @@ function reducer(state, action) {
       return { ...state, beds: action.payload }
     case 'SET_INITIAL_ALERTS':
       return { ...state, alerts: action.payload }
+    case 'SET_SELECTED_OR':
+      return { ...state, selectedOrId: action.payload }
+    case 'ADD_AUDIT_LOG':
+      return { ...state, auditLogs: [action.payload, ...state.auditLogs].slice(0, 50) }
     default:
       return state
   }
@@ -61,5 +95,7 @@ export function CasesProvider({ children }) {
 }
 
 export function useCases() {
-  return useContext(CasesContext)
+  const ctx = useContext(CasesContext)
+  if (!ctx) throw new Error('useCases must be used within CasesProvider')
+  return ctx
 }

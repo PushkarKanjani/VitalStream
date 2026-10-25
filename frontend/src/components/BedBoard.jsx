@@ -1,10 +1,12 @@
 import { useState } from 'react'
+import { Bed, CheckCircle2, Lock, Unlock, AlertCircle, Plus, RefreshCw, X } from 'lucide-react'
 import { useCases } from '../context/CasesContext'
+import { useToast } from '../context/ToastContext'
 
 const STATUS_META = {
-  available: { label: 'Available', bg: '#EBF7F3', color: '#2D9B6F', border: '#A8DFC8' },
-  occupied:  { label: 'Occupied',  bg: '#EEF4FF', color: '#2563EB', border: '#B4CFFA' },
-  cleaning:  { label: 'Cleaning',  bg: '#FDF6E8', color: '#B07A20', border: '#EDD89A' },
+  available: { label: 'Available', bg: '#ECFDF5', color: '#059669', border: '#A7F3D0', icon: Unlock },
+  occupied:  { label: 'Occupied',  bg: '#EFF6FF', color: '#2563EB', border: '#BFDBFE', icon: Lock },
+  cleaning:  { label: 'Sanitizing', bg: '#FFFBEB', color: '#D97706', border: '#FDE68A', icon: RefreshCw },
 }
 
 const PLACEHOLDER_BEDS = ['REC-1','REC-2','REC-3','REC-4','REC-5','REC-6'].map(id => ({
@@ -13,9 +15,13 @@ const PLACEHOLDER_BEDS = ['REC-1','REC-2','REC-3','REC-4','REC-5','REC-6'].map(i
 
 export default function BedBoard() {
   const { state, dispatch } = useCases()
-  const [reserving, setReserving] = useState(null)
-  const [form, setForm]           = useState({ caseId: '', reservedBy: '' })
+  const { addToast } = useToast()
+
+  const [reserving, setReserving] = useState(false)
+  const [releasing, setReleasing] = useState(null)
   const [modalBed, setModalBed]   = useState(null)
+  const [releaseModalBed, setReleaseModalBed] = useState(null)
+  const [form, setForm]           = useState({ caseId: '', reservedBy: 'Charge Nurse Sarah' })
   const [error, setError]         = useState('')
 
   const recoveryBeds = Object.values(state.beds).filter(b => b.type === 'recovery')
@@ -24,159 +30,317 @@ export default function BedBoard() {
   const avail = beds.filter(b => b.status === 'available').length
   const occup = beds.filter(b => b.status === 'occupied').length
 
-  async function reserve() {
+  // Reserve Bed Action
+  async function handleReserve(e) {
+    e.preventDefault()
     if (!form.caseId || !form.reservedBy) {
-      setError('Please fill in both fields.')
+      setError('Both Case ID and Nurse Name are required.')
       return
     }
     setError('')
-    setReserving(modalBed)
+    setReserving(true)
+
     try {
       const res = await fetch('/api/beds/reserve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          bed_id:      modalBed,
-          case_id:     form.caseId,
+          bed_id: modalBed,
+          case_id: form.caseId,
           reserved_by: form.reservedBy,
         }),
       })
+
       const data = await res.json()
+
       if (!res.ok) {
-        setError(data.detail || 'Reservation failed.')
+        // Double booking race condition caught!
+        const errDetail = data.detail || 'Reservation rejected.'
+        setError(errDetail)
+        addToast({
+          type: 'error',
+          title: 'ACID Reservation Blocked',
+          message: errDetail,
+          duration: 5000
+        })
       } else {
         dispatch({ type: 'BED_CHANGE', payload: data.bed })
+        addToast({
+          type: 'success',
+          title: 'Bed Reserved Successfully',
+          message: `${modalBed} reserved for ${form.caseId}. ACID transaction committed.`,
+          duration: 4000
+        })
+
+        dispatch({
+          type: 'ADD_AUDIT_LOG',
+          payload: {
+            id: `BED-${Date.now().toString().slice(-4)}`,
+            timestamp: new Date().toISOString(),
+            action: 'BED_RESERVATION_COMMITTED',
+            entity: modalBed,
+            actor: form.reservedBy,
+            status: 'success',
+            detail: `ACID lock acquired. Allocated to ${form.caseId}.`
+          }
+        })
+
         setModalBed(null)
-        setForm({ caseId: '', reservedBy: '' })
+        setForm({ caseId: '', reservedBy: 'Charge Nurse Sarah' })
       }
     } catch {
-      setError('Network error — try again.')
+      setError('Network communication failure.')
     } finally {
-      setReserving(null)
+      setReserving(false)
+    }
+  }
+
+  // Release Bed Action
+  async function handleRelease(bedId) {
+    setReleasing(bedId)
+    try {
+      const res = await fetch(`/api/beds/release/${bedId}`, { method: 'POST' })
+      if (!res.ok) {
+        addToast({ type: 'error', title: 'Release Failed', message: 'Could not release bed.' })
+      } else {
+        const updated = { bed_id: bedId, status: 'available', case_id: null, reserved_by: null, type: 'recovery' }
+        dispatch({ type: 'BED_CHANGE', payload: updated })
+        addToast({
+          type: 'info',
+          title: 'Bed Released',
+          message: `${bedId} is now clean and available for post-op admissions.`
+        })
+
+        dispatch({
+          type: 'ADD_AUDIT_LOG',
+          payload: {
+            id: `BED-${Date.now().toString().slice(-4)}`,
+            timestamp: new Date().toISOString(),
+            action: 'BED_RELEASED',
+            entity: bedId,
+            actor: 'Charge Nurse',
+            status: 'success',
+            detail: `Patient discharged. Bed status returned to available.`
+          }
+        })
+
+        setReleaseModalBed(null)
+      }
+    } finally {
+      setReleasing(null)
     }
   }
 
   return (
     <section>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#1A1D27', margin: 0 }}>Recovery Beds</h2>
-          <p style={{ fontSize: '0.72rem', color: '#8890A4', margin: '2px 0 0' }}>
-            {avail} available · {occup} occupied
+          <h2 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            <Bed className="w-4 h-4 text-blue-600" />
+            <span>Post-Anesthesia Recovery Bed Board</span>
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            ACID-guaranteed allocations with MongoDB single-document WiredTiger locking
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {[
-            { label: 'Available', count: avail, bg: '#EBF7F3', color: '#2D9B6F' },
-            { label: 'Occupied',  count: occup, bg: '#EEF4FF', color: '#2563EB' },
-          ].map(s => (
-            <div key={s.label} style={{ textAlign: 'center', background: s.bg, borderRadius: 8, padding: '6px 12px' }}>
-              <div style={{ fontSize: '1rem', fontWeight: 700, color: s.color, fontFamily: 'JetBrains Mono, monospace' }}>{s.count}</div>
-              <div style={{ fontSize: '0.6rem', color: '#8890A4', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</div>
-            </div>
-          ))}
+
+        <div className="flex items-center gap-2">
+          <div className="px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-800">
+            {avail} Available
+          </div>
+          <div className="px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-xs font-semibold text-blue-800">
+            {occup} Occupied
+          </div>
         </div>
       </div>
 
-      {/* Bed grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+      {/* Bed Cards Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
         {beds.map(bed => {
           const meta = STATUS_META[bed.status] || STATUS_META.available
-          const clickable = bed.status === 'available'
+          const Icon = meta.icon
+          const isAvail = bed.status === 'available'
+          const isOccup = bed.status === 'occupied'
+
           return (
             <div
               key={bed.bed_id}
-              className={clickable ? 'card card-hover' : 'card'}
+              className="app-card p-4 transition-all relative overflow-hidden"
               style={{
-                padding: '12px 14px',
-                border: `1px solid ${meta.border}`,
                 background: meta.bg,
-                cursor: clickable ? 'pointer' : 'default',
-                opacity: bed.status === 'cleaning' ? 0.75 : 1,
+                borderColor: meta.border,
               }}
-              onClick={() => clickable && setModalBed(bed.bed_id)}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.85rem', fontWeight: 700, color: '#1A1D27' }}>
-                  {bed.bed_id}
-                </span>
-                <span style={{
-                  fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase',
-                  letterSpacing: '0.05em', color: meta.color,
-                }}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5">
+                  <Icon className="w-3.5 h-3.5" style={{ color: meta.color }} />
+                  <span className="font-mono font-extrabold text-sm text-slate-900">
+                    {bed.bed_id}
+                  </span>
+                </div>
+
+                <span 
+                  className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                  style={{ color: meta.color, background: 'rgba(255,255,255,0.7)' }}
+                >
                   {meta.label}
                 </span>
               </div>
 
-              {bed.case_id && (
-                <div style={{ fontSize: '0.7rem', color: '#8890A4', marginTop: 2 }}>
-                  Case: <span style={{ color: '#4B5263', fontFamily: 'JetBrains Mono, monospace' }}>{bed.case_id}</span>
-                </div>
-              )}
-              {bed.reserved_by && (
-                <div style={{ fontSize: '0.68rem', color: '#8890A4' }}>By: {bed.reserved_by}</div>
-              )}
+              {/* Case / Occupant Info */}
+              <div className="text-xs text-slate-600 space-y-0.5 min-h-[36px]">
+                {bed.case_id ? (
+                  <>
+                    <div className="font-semibold text-slate-800">Case: {bed.case_id}</div>
+                    <div className="text-[11px] text-slate-500 truncate">Nurse: {bed.reserved_by || 'Staff'}</div>
+                  </>
+                ) : (
+                  <div className="text-slate-400 italic text-[11px] pt-1">
+                    Ready for surgical transfer
+                  </div>
+                )}
+              </div>
 
-              {clickable && (
-                <div style={{ marginTop: 8, fontSize: '0.68rem', color: '#2563EB', fontWeight: 500 }}>
-                  + Reserve
-                </div>
-              )}
+              {/* Action Buttons */}
+              <div className="mt-3 pt-2.5 border-t border-slate-200/60 flex items-center justify-between">
+                {isAvail && (
+                  <button
+                    onClick={() => {
+                      setModalBed(bed.bed_id)
+                      setForm({ caseId: `CASE-00${Math.floor(Math.random() * 8) + 1}`, reservedBy: 'Charge Nurse Sarah' })
+                      setError('')
+                    }}
+                    className="w-full btn-solid-primary py-1.5 text-xs rounded-lg"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Reserve Bed</span>
+                  </button>
+                )}
+
+                {isOccup && (
+                  <button
+                    onClick={() => setReleaseModalBed(bed.bed_id)}
+                    className="w-full btn-outline py-1.5 text-xs text-slate-600 hover:text-rose-600 hover:border-rose-200 rounded-lg"
+                  >
+                    <span>Discharge / Release</span>
+                  </button>
+                )}
+              </div>
             </div>
           )
         })}
       </div>
 
-      {/* Reserve modal */}
+      {/* Reserve Bed Modal */}
       {modalBed && (
-        <div style={{
-          position: 'fixed', inset: 0,
-          background: 'rgba(26,29,39,0.35)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 50,
-        }}>
-          <div className="card" style={{
-            width: 340, padding: '24px',
-            boxShadow: '0 20px 50px rgba(0,0,0,0.14)',
-            animation: 'slideUp 0.22s ease-out',
-          }}>
-            <h3 style={{ fontWeight: 700, fontSize: '0.95rem', color: '#1A1D27', margin: '0 0 4px' }}>
-              Reserve {modalBed}
-            </h3>
-            <p style={{ fontSize: '0.72rem', color: '#8890A4', margin: '0 0 18px' }}>
-              Enter case details to reserve this bed.
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-enter">
+          <div className="app-card bg-white p-6 rounded-2xl max-w-sm w-full shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Bed className="w-5 h-5 text-blue-600" />
+                <h3 className="text-base font-bold text-slate-900">
+                  Reserve {modalBed}
+                </h3>
+              </div>
+              <button 
+                onClick={() => setModalBed(null)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+              Executes atomic <code className="bg-slate-100 text-blue-600 px-1 py-0.5 rounded font-mono">findOneAndUpdate</code> to guarantee zero concurrent double-bookings.
             </p>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <input
-                className="field"
-                placeholder="Case ID  (e.g. CASE-001)"
-                value={form.caseId}
-                onChange={e => setForm(f => ({ ...f, caseId: e.target.value }))}
-              />
-              <input
-                className="field"
-                placeholder="Reserved by (nurse name)"
-                value={form.reservedBy}
-                onChange={e => setForm(f => ({ ...f, reservedBy: e.target.value }))}
-              />
+            <form onSubmit={handleReserve} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
+                  Surgical Case ID
+                </label>
+                <input
+                  type="text"
+                  value={form.caseId}
+                  onChange={(e) => setForm(f => ({ ...f, caseId: e.target.value }))}
+                  placeholder="e.g. CASE-001"
+                  className="app-input text-xs"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
+                  Reserving Clinician
+                </label>
+                <input
+                  type="text"
+                  value={form.reservedBy}
+                  onChange={(e) => setForm(f => ({ ...f, reservedBy: e.target.value }))}
+                  placeholder="Nurse / MD Name"
+                  className="app-input text-xs"
+                  required
+                />
+              </div>
+
               {error && (
-                <p style={{ fontSize: '0.72rem', color: '#C7344C', margin: 0 }}>{error}</p>
+                <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{error}</span>
+                </div>
               )}
-              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                <button className="btn-primary" style={{ flex: 1 }} onClick={reserve} disabled={!!reserving}>
-                  {reserving ? 'Reserving…' : 'Reserve Bed'}
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={reserving}
+                  className="flex-1 btn-solid-primary py-2.5 text-xs rounded-xl"
+                >
+                  {reserving ? 'Acquiring Lock…' : 'Confirm Allocation'}
                 </button>
-                <button className="btn-ghost" style={{ flex: 1 }} onClick={() => { setModalBed(null); setError('') }}>
+                <button
+                  type="button"
+                  onClick={() => setModalBed(null)}
+                  className="btn-outline py-2.5 px-4 text-xs rounded-xl"
+                >
                   Cancel
                 </button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Release Confirmation Modal */}
+      {releaseModalBed && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-enter">
+          <div className="app-card bg-white p-6 rounded-2xl max-w-sm w-full shadow-2xl border border-slate-200">
+            <h3 className="text-base font-bold text-slate-900 mb-2">
+              Release {releaseModalBed}?
+            </h3>
+            <p className="text-xs text-slate-600 mb-5 leading-relaxed">
+              Are you sure you want to mark this recovery bed as discharged? The bed will be sanitized and returned to the available pool.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleRelease(releaseModalBed)}
+                disabled={releasing === releaseModalBed}
+                className="flex-1 btn-solid-primary bg-rose-600 hover:bg-rose-700 py-2.5 text-xs rounded-xl"
+              >
+                {releasing === releaseModalBed ? 'Releasing…' : 'Yes, Discharge Bed'}
+              </button>
+              <button
+                onClick={() => setReleaseModalBed(null)}
+                className="btn-outline py-2.5 px-4 text-xs rounded-xl"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
       )}
+
     </section>
   )
 }
