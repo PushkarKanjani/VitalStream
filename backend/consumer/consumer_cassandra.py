@@ -20,8 +20,11 @@ import os
 import time
 from datetime import datetime, date
 
+os.environ["CASS_DRIVER_NO_EXTENSIONS"] = "1"
+os.environ["CASS_DRIVER_NO_CYTHON"] = "1"
+
 from cassandra.cluster import Cluster, ExecutionProfile, EXEC_PROFILE_DEFAULT
-from cassandra.policies import DCAwareRoundRobinPolicy
+from cassandra.policies import DCAwareRoundRobinPolicy, AddressTranslator
 from cassandra.query import BatchStatement, ConsistencyLevel
 from dotenv import load_dotenv
 from kafka import KafkaConsumer
@@ -35,12 +38,18 @@ KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "localhost:9093")
 KAFKA_TOPIC     = os.getenv("KAFKA_TOPIC_VITALS", "vitals.raw")
 KAFKA_GROUP     = os.getenv("KAFKA_GROUP_ID", "vitalstream-consumer")
 KAFKA_RESET     = os.getenv("KAFKA_AUTO_OFFSET_RESET", "latest")
-CASS_HOST       = os.getenv("CASSANDRA_HOST", "localhost")
+_raw_host       = os.getenv("CASSANDRA_HOST", "127.0.0.1")
+CASS_HOST       = "127.0.0.1" if _raw_host in ("localhost", "127.0.0.1") else _raw_host
 CASS_PORT       = int(os.getenv("CASSANDRA_PORT", "9042"))
 CASS_KEYSPACE   = os.getenv("CASSANDRA_KEYSPACE", "vitalstream")
 
 BATCH_SIZE = 50        # rows per Cassandra batch
 REPORT_EVERY = 500     # log every N rows
+
+
+class LocalhostTranslator(AddressTranslator):
+    def translate(self, addr):
+        return CASS_HOST if CASS_HOST in ("127.0.0.1", "localhost") else addr
 
 
 def to_float(val):
@@ -58,11 +67,16 @@ def connect_cassandra():
         load_balancing_policy=DCAwareRoundRobinPolicy(local_dc="datacenter1"),
         consistency_level=ConsistencyLevel.LOCAL_ONE,
     )
+    kwargs = {}
+    if CASS_HOST in ("127.0.0.1", "localhost"):
+        kwargs["address_translator"] = LocalhostTranslator()
+
     cluster = Cluster(
         [CASS_HOST],
         port=CASS_PORT,
         protocol_version=5,
-        execution_profiles={EXEC_PROFILE_DEFAULT: profile}
+        execution_profiles={EXEC_PROFILE_DEFAULT: profile},
+        **kwargs
     )
     session = cluster.connect(CASS_KEYSPACE)
     logger.info(f"✓ Cassandra connected ({CASS_HOST}:{CASS_PORT})")
