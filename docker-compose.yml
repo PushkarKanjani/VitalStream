@@ -73,7 +73,8 @@ services:
 
   # ── FLINK JOBMANAGER ─────────────────────────────────────────────────────────
   jobmanager:
-    image: flink:1.18.1-java17
+    build: ./flink
+    image: vitalstream-flink:1.18
     container_name: vs_flink_jm
     hostname: jobmanager
     command: jobmanager
@@ -101,7 +102,7 @@ services:
 
   # ── FLINK TASKMANAGER ────────────────────────────────────────────────────────
   taskmanager:
-    image: flink:1.18.1-java17
+    image: vitalstream-flink:1.18
     container_name: vs_flink_tm
     hostname: taskmanager
     command: taskmanager
