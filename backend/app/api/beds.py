@@ -38,6 +38,7 @@ async def reserve_bed(payload: BedReserveRequest):
             f"Bed {payload.bed_id} is already {bed['status']} (case {bed.get('case_id', '?')}). "
             "Double-booking prevented."
         )
+    result.pop("_id", None)
     return {"message": f"Bed {payload.bed_id} reserved for case {payload.case_id}", "bed": result}
 
 

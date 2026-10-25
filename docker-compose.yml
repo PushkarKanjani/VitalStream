@@ -59,56 +59,59 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-    entrypoint: ["/bin/bash", "-c"]
-    command: |
-      "
-      echo 'Creating Kafka topics...'
-      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists \
-        --topic vitals.raw --partitions 6 --replication-factor 1 \
-        --config retention.ms=86400000
-      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists \
-        --topic cases.events --partitions 1 --replication-factor 1
-      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists \
-        --topic alerts.raised --partitions 1 --replication-factor 1
-      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists \
-        --topic alerts.acknowledged --partitions 1 --replication-factor 1
-      echo 'Topics created:'
+    command: >
+      bash -c "
+      echo 'Creating Kafka topics...' &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic vitals.raw --partitions 6 --replication-factor 1 --config retention.ms=86400000 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic cases.events --partitions 1 --replication-factor 1 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic alerts.raised --partitions 1 --replication-factor 1 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic alerts.acknowledged --partitions 1 --replication-factor 1 &&
+      echo 'Topics created:' &&
       kafka-topics --bootstrap-server kafka:9092 --list
       "
     networks: [vs_net]
 
   # ── FLINK JOBMANAGER ─────────────────────────────────────────────────────────
-  flink_jobmanager:
+  jobmanager:
     image: flink:1.18.1-java17
     container_name: vs_flink_jm
+    hostname: jobmanager
     command: jobmanager
     ports:
       - "8081:8081"   # Flink Web UI
     environment:
-      - JOB_MANAGER_RPC_ADDRESS=flink_jobmanager
-      - FLINK_PROPERTIES=jobmanager.rpc.address:flink_jobmanager
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        parallelism.default: 1
+        taskmanager.numberOfTaskSlots: 4
+        state.backend: filesystem
+        state.checkpoints.dir: file:///opt/flink/data/checkpoints
+        state.savepoints.dir: file:///opt/flink/data/savepoints
     volumes:
       - ./flink/jobs:/opt/flink/usrlib
-      - ./flink/config/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml
       - ./data/flink:/opt/flink/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8081/overview"]
       interval: 15s
-      retries: 8
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     networks: [vs_net]
 
   # ── FLINK TASKMANAGER ────────────────────────────────────────────────────────
-  flink_taskmanager:
+  taskmanager:
     image: flink:1.18.1-java17
     container_name: vs_flink_tm
+    hostname: taskmanager
     command: taskmanager
     environment:
-      - JOB_MANAGER_RPC_ADDRESS=flink_jobmanager
-      - FLINK_PROPERTIES=jobmanager.rpc.address:flink_jobmanager
-      - TASK_MANAGER_NUMBER_OF_TASK_SLOTS=4
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 4
     depends_on:
-      flink_jobmanager:
-        condition: service_healthy
+      - jobmanager
     volumes:
       - ./flink/jobs:/opt/flink/usrlib
     networks: [vs_net]

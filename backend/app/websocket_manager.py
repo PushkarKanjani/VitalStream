@@ -40,35 +40,44 @@ class ConnectionManager:
 async def change_stream_listener(db: AsyncIOMotorDatabase, manager: ConnectionManager):
     """
     Watches 3 MongoDB collections for changes and broadcasts to all WS clients.
-    Collections: alerts, cases, beds
+    Attempts MongoDB change-streams first; if not on a replica set, falls back to periodic heartbeat.
     """
+    import asyncio
     pipeline = [{"$match": {"operationType": {"$in": ["insert", "update", "replace"]}}}]
 
     logger.info("Starting MongoDB change-stream watchers…")
 
-    import asyncio
-
     async def watch_collection(collection_name: str, event_type: str):
         collection = db[collection_name]
-        try:
-            async with collection.watch(pipeline, full_document="updateLookup") as stream:
-                async for change in stream:
-                    doc = change.get("fullDocument") or {}
-                    # Remove MongoDB internal _id for JSON serialization
-                    doc.pop("_id", None)
+        async with collection.watch(pipeline, full_document="updateLookup") as stream:
+            async for change in stream:
+                doc = change.get("fullDocument") or {}
+                doc.pop("_id", None)
+                await manager.broadcast({
+                    "event": event_type,
+                    "collection": collection_name,
+                    "operation": change["operationType"],
+                    "data": doc,
+                    "ts": datetime.utcnow().isoformat(),
+                })
+
+    try:
+        await asyncio.gather(
+            watch_collection("alerts", "alert_change"),
+            watch_collection("cases",  "case_change"),
+            watch_collection("beds",   "bed_change"),
+        )
+    except Exception as e:
+        logger.warning(f"Change streams unavailable on standalone MongoDB ({e}). Falling back to heartbeat loop.")
+        while True:
+            await asyncio.sleep(3)
+            if manager.active:
+                try:
+                    unacked_count = await db.alerts.count_documents({"acknowledged": False})
                     await manager.broadcast({
-                        "event": event_type,
-                        "collection": collection_name,
-                        "operation": change["operationType"],
-                        "data": doc,
+                        "event": "heartbeat",
+                        "unacked_alerts": unacked_count,
                         "ts": datetime.utcnow().isoformat(),
                     })
-        except Exception as e:
-            logger.error(f"Change stream error on {collection_name}: {e}")
-
-    # Run all 3 watchers concurrently
-    await asyncio.gather(
-        watch_collection("alerts", "alert_change"),
-        watch_collection("cases",  "case_change"),
-        watch_collection("beds",   "bed_change"),
-    )
+                except Exception:
+                    pass
