@@ -1,5 +1,6 @@
 -- VitalStream — Cassandra Keyspace + Table Initialization
--- Run: docker exec vs_cassandra cqlsh -f /init_cassandra.cql
+-- Run (PowerShell): Get-Content scripts/init_cassandra.cql | docker exec -i vs_cassandra cqlsh
+-- Run (bash):       docker exec -i vs_cassandra cqlsh < scripts/init_cassandra.cql
 
 -- ── KEYSPACE ──────────────────────────────────────────────────────────────────
 CREATE KEYSPACE IF NOT EXISTS vitalstream
@@ -30,7 +31,7 @@ CREATE TABLE IF NOT EXISTS vitals_by_patient_day (
   AND default_time_to_live = 2592000  -- 30-day TTL
   AND compaction = {
     'class': 'TimeWindowCompactionStrategy',
-    'compaction_window_unit': 'HOURS',
+    'compaction_window_unit': 'DAYS',
     'compaction_window_size': 1
   };
 
@@ -51,7 +52,7 @@ CREATE TABLE IF NOT EXISTS vitals_by_or_day (
   AND default_time_to_live = 86400    -- 1-day TTL (live dashboard only)
   AND compaction = {
     'class': 'TimeWindowCompactionStrategy',
-    'compaction_window_unit': 'HOURS',
+    'compaction_window_unit': 'DAYS',
     'compaction_window_size': 1
   };
 
@@ -83,3 +84,17 @@ CREATE TABLE IF NOT EXISTS latest_vitals_by_or (
 
 -- ── INDEXES ───────────────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS ON vitals_by_patient_day (or_id);
+
+-- ── MIGRATION (idempotent) ───────────────────────────────────────────────────
+-- CREATE ... IF NOT EXISTS never changes an existing table, so enforce the
+-- 1-day TWCS window explicitly for databases created with an older schema.
+ALTER TABLE vitals_by_patient_day WITH compaction = {
+    'class': 'TimeWindowCompactionStrategy',
+    'compaction_window_unit': 'DAYS',
+    'compaction_window_size': 1
+};
+ALTER TABLE vitals_by_or_day WITH compaction = {
+    'class': 'TimeWindowCompactionStrategy',
+    'compaction_window_unit': 'DAYS',
+    'compaction_window_size': 1
+};

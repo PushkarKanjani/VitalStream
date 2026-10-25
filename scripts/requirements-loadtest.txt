@@ -1,0 +1,4 @@
+cassandra-driver>=3.29
+python-dotenv>=1.0
+# cassandra-driver needs asyncore, which was removed in Python 3.12+
+pyasyncore>=1.0; python_version >= "3.12"

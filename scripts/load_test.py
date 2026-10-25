@@ -20,6 +20,11 @@ from cassandra.policies import DCAwareRoundRobinPolicy
 from cassandra.query import ConsistencyLevel
 from dotenv import load_dotenv
 
+try:  # asyncore (default reactor) was removed in Python 3.12
+    from cassandra.io.asyncioreactor import AsyncioConnection as _Conn
+except Exception:  # pragma: no cover
+    _Conn = None
+
 load_dotenv()
 
 CASS_HOST     = os.getenv("CASSANDRA_HOST", "localhost")
@@ -32,8 +37,9 @@ def connect():
         load_balancing_policy=DCAwareRoundRobinPolicy(local_dc="datacenter1"),
         consistency_level=ConsistencyLevel.LOCAL_ONE,
     )
+    kwargs = {"connection_class": _Conn} if _Conn else {}
     cluster = Cluster([CASS_HOST], port=CASS_PORT,
-                      execution_profiles={EXEC_PROFILE_DEFAULT: profile})
+                      execution_profiles={EXEC_PROFILE_DEFAULT: profile}, **kwargs)
     return cluster.connect(CASS_KEYSPACE)
 
 
@@ -57,6 +63,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--duration", type=int, default=30, help="Test duration (seconds)")
     parser.add_argument("--ors",      type=int, default=6,  help="Number of simulated ORs")
+    parser.add_argument("--sla-ms",   type=float, default=5.0, help="p95 write latency SLA (ms)")
+    parser.add_argument("--warmup",   type=int, default=200, help="Warm-up writes excluded from stats")
     args = parser.parse_args()
 
     session = connect()
@@ -65,6 +73,14 @@ def main():
           (patient_id, reading_date, ts, or_id, hr, syst_bp, dias_bp, o2_sat, temp_c, etco2, raw_source)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """)
+
+    # Warm-up: open connections / JIT the server path; not counted in the stats
+    for n in range(args.warmup):
+        v = random_vital(f"OR-{n % args.ors + 1}", f"load-test-patient-{n % args.ors + 1}")
+        session.execute(stmt, (
+            v["patient_id"], v["reading_date"], v["ts"], v["or_id"], v["hr"],
+            v["syst_bp"], v["dias_bp"], v["o2_sat"], v["temp_c"], v["etco2"], v["raw_source"]
+        ))
 
     print(f"\n{'='*60}")
     print(f"VitalStream Load Test — {args.ors} ORs, {args.duration}s")
@@ -94,9 +110,10 @@ def main():
     elapsed = time.time() - t_start
     latencies.sort()
 
-    p50  = latencies[int(len(latencies) * 0.50)]
-    p95  = latencies[int(len(latencies) * 0.95)]
-    p99  = latencies[int(len(latencies) * 0.99)]
+    def pct(p):
+        return latencies[min(len(latencies) - 1, int(len(latencies) * p))]
+
+    p50, p95, p99 = pct(0.50), pct(0.95), pct(0.99)
     mean = statistics.mean(latencies)
 
     print(f"\n✓ RESULTS")
@@ -110,8 +127,8 @@ def main():
     print()
 
     # Pass/fail
-    ok = p95 < 10
-    print(f"  SLA (p95 < 10ms): {'✓ PASS' if ok else '✗ FAIL'}")
+    ok = p95 < args.sla_ms
+    print(f"  SLA (p95 < {args.sla_ms:g}ms): {'✓ PASS' if ok else '✗ FAIL'}")
     print(f"{'='*60}\n")
 
 
