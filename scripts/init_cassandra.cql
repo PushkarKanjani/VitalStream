@@ -102,6 +102,25 @@ CREATE TABLE IF NOT EXISTS outliers_by_or (
     PRIMARY KEY ((or_id, reading_date), ts)
 ) WITH CLUSTERING ORDER BY (ts DESC);
 
+-- ── PATIENT REAL OUTLIERS TABLE (P2 Specification) ───────────────────────────
+-- Partitioned by (patient_id, bucket_date), clustered by ts_utc_ms DESC, with TTL
+CREATE TABLE IF NOT EXISTS patient_outliers (
+    patient_id     TEXT,
+    bucket_date    DATE,
+    ts_utc_ms      BIGINT,
+    or_id          TEXT,
+    metric         TEXT,
+    value          FLOAT,
+    unit           TEXT,
+    rule           TEXT,
+    expected_low   FLOAT,
+    expected_high  FLOAT,
+    z_score        FLOAT,
+    severity       TEXT,
+    PRIMARY KEY ((patient_id, bucket_date), ts_utc_ms)
+) WITH CLUSTERING ORDER BY (ts_utc_ms DESC)
+  AND default_time_to_live = 604800;
+
 -- ── INDEXES ───────────────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS ON vitals_by_patient_day (or_id);
 

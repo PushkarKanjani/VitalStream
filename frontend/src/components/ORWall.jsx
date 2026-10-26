@@ -1,29 +1,27 @@
 import { useCases } from '../context/CasesContext'
+import { METRIC_RULES, classifyMetric } from '../config/outlierRules'
 import { Activity, ShieldAlert, Heart, ExternalLink } from 'lucide-react'
 
-function classify(field, value) {
-  if (value == null) return null
-  if (field === 'hr')      return value > 120 || value < 45 ? 'danger' : value > 100 ? 'warn' : null
-  if (field === 'syst_bp') return value < 90  || value > 160 ? 'danger' : value > 140 ? 'warn' : null
-  if (field === 'o2_sat')  return value < 90  ? 'danger' : value < 95 ? 'warn' : null
-  if (field === 'temp_c')  return value > 39  ? 'danger' : value > 38.5 ? 'warn' : null
-  return null
-}
+function VitalChip({ label, value, unit, field, isOutlier }) {
+  const classification = classifyMetric(field, value)
+  const isDanger = isOutlier || classification?.level === 'danger'
+  const isWarn = classification?.level === 'warn'
 
-function VitalChip({ label, value, unit, field }) {
-  const level = classify(field, value)
-  const display = value != null ? (typeof value === 'number' ? value.toFixed(field === 'o2_sat' ? 1 : 0) : value) : '—'
+  const display = value != null ? (typeof value === 'number' ? value.toFixed(field === 'o2_sat' || field === 'temp_c' ? 1 : 0) : value) : '—'
 
-  const bg    = level === 'danger' ? '#FEF2F2' : level === 'warn' ? '#FFFBEB' : '#F8FAFC'
-  const color = level === 'danger' ? '#DC2626' : level === 'warn' ? '#D97706' : '#0F172A'
-  const border = level === 'danger' ? '#FECACA' : level === 'warn' ? '#FDE68A' : '#E2E8F0'
+  const bg    = isDanger ? '#FEF2F2' : isWarn ? '#FFFBEB' : '#F8FAFC'
+  const color = isDanger ? '#DC2626' : isWarn ? '#D97706' : '#0F172A'
+  const border = isDanger ? '#FECACA' : isWarn ? '#FDE68A' : '#E2E8F0'
 
   return (
     <div
       className="p-2 rounded-lg border flex-1 min-w-[70px] transition-colors"
       style={{ background: bg, borderColor: border }}
     >
-      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{label}</div>
+      <div className="flex items-center justify-between mb-0.5">
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</span>
+        {isDanger && <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />}
+      </div>
       <div className="flex items-baseline gap-1">
         <span className="text-lg font-bold font-mono tracking-tight" style={{ color }}>
           {display}
@@ -34,8 +32,8 @@ function VitalChip({ label, value, unit, field }) {
   )
 }
 
-/** Tiny inline SVG sparkline for HR history */
-function HRSparkline({ data = [] }) {
+/** Tiny inline SVG sparkline for vital history */
+function MetricSparkline({ data = [], metric = 'hr', isOutlier = false }) {
   if (!data || data.length < 2) {
     return (
       <div style={{ height: 28, display: 'flex', alignItems: 'center' }}>
@@ -60,24 +58,15 @@ function HRSparkline({ data = [] }) {
 
   const polyline = pts.join(' ')
 
-  // Fill area under the line
-  const firstX = (0 / (clean.length - 1)) * W
+  const firstX = 0
   const lastX  = W
   const area = `${firstX.toFixed(1)},${H} ${polyline} ${lastX.toFixed(1)},${H}`
 
-  // Color by last value
-  const last = clean[clean.length - 1]
-  const strokeColor = last > 120 || last < 45 ? '#EF4444' : last > 100 ? '#F59E0B' : '#2563EB'
-  const fillColor   = last > 120 || last < 45 ? '#FEF2F2' : last > 100 ? '#FFFBEB' : '#EFF6FF'
+  const strokeColor = isOutlier ? '#DC2626' : metric === 'syst_bp' ? '#0284C7' : metric === 'o2_sat' ? '#059669' : '#2563EB'
+  const fillColor   = isOutlier ? '#FEF2F2' : metric === 'syst_bp' ? '#F0F9FF' : metric === 'o2_sat' ? '#ECFDF5' : '#EFF6FF'
 
   return (
     <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible' }}>
-      <defs>
-        <linearGradient id={`sg-fill`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={strokeColor} stopOpacity="0.18" />
-          <stop offset="100%" stopColor={strokeColor} stopOpacity="0.02" />
-        </linearGradient>
-      </defs>
       <polygon points={area} fill={fillColor} opacity="0.6" />
       <polyline
         points={polyline}
@@ -87,7 +76,6 @@ function HRSparkline({ data = [] }) {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      {/* Last value dot */}
       <circle
         cx={parseFloat(pts[pts.length - 1].split(',')[0])}
         cy={parseFloat(pts[pts.length - 1].split(',')[1])}
@@ -101,11 +89,58 @@ function HRSparkline({ data = [] }) {
 function ORCard({ orId, onSelect }) {
   const { state } = useCases()
   const vitals     = state.vitals[orId] || {}
-  const hrHistory  = state.vitalsHistory[orId] || []
   const caseInfo   = state.cases[orId]
   const hasAlert   = state.alerts.some(a => a.or_id === orId && !a.acknowledged)
 
+  // Outliers specifically for this room
+  const orActiveOutliers = (state.activeOutliers || []).filter(o => o.or_id === orId)
+  const topOutlier = orActiveOutliers[0] || (vitals.is_outlier ? {
+    metric: vitals.metric || 'syst_bp',
+    value: vitals.val ?? vitals.syst_bp ?? 70.0,
+    unit: vitals.unit || 'mmHg',
+    rule: vitals.rule || 'THRESHOLD',
+    expected_low: vitals.expected_low ?? 75.0,
+    expected_high: vitals.expected_high ?? 180.0,
+    z_score: vitals.z_score,
+    severity: vitals.severity || 'CRITICAL'
+  } : null)
+
+  const activeMetric = topOutlier ? topOutlier.metric : 'hr'
+  const histSource = state.vitalsHistory[orId]
+  const historyData = histSource?.[activeMetric] || (Array.isArray(histSource) ? histSource : [])
+
+  let outlierText = ''
+  if (topOutlier) {
+    const mLabel = METRIC_RULES[topOutlier.metric]?.label || topOutlier.metric.toUpperCase()
+    const valStr = typeof topOutlier.value === 'number' ? topOutlier.value.toFixed(1) : topOutlier.value
+    const unitStr = topOutlier.unit || METRIC_RULES[topOutlier.metric]?.unit || ''
+    if (topOutlier.rule === 'STATISTICAL') {
+      outlierText = `${mLabel} ${valStr} ${unitStr} | z = ${(topOutlier.z_score || 0).toFixed(1)} | STATISTICAL`
+    } else if (topOutlier.rule === 'ARTIFACT') {
+      outlierText = `${mLabel} ${valStr} ${unitStr} | SENSOR CHECK | ARTIFACT`
+    } else {
+      const comp = topOutlier.value < topOutlier.expected_low
+        ? `below ${topOutlier.expected_low}`
+        : `above ${topOutlier.expected_high}`
+      outlierText = `${mLabel} ${valStr} ${unitStr} | ${comp} | THRESHOLD`
+    }
+  }
+
+  // Red card border is ONLY for clinical alerts, not normal or outlier-only rooms
   const status = hasAlert ? 'alert' : caseInfo?.status === 'active' ? 'active' : 'idle'
+
+  const DEFAULT_OR_CASES = {
+    'OR-1': { procedure: 'Coronary Artery Bypass Graft (CABG)', surgeon: 'Dr. Aditi Sharma' },
+    'OR-2': { procedure: 'Laparoscopic Cholecystectomy', surgeon: 'Dr. Rajesh Kulkarni' },
+    'OR-3': { procedure: 'Total Hip Arthroplasty', surgeon: 'Dr. Anjali Mehta' },
+    'OR-4': { procedure: 'Craniotomy for Subdural Hematoma', surgeon: 'Dr. Rohan Gupta' },
+    'OR-5': { procedure: 'Emergency Exploratory Laparotomy', surgeon: 'Dr. Vivek Menon' },
+    'OR-6': { procedure: 'Video-Assisted Thoracoscopic Surgery (VATS)', surgeon: 'Dr. Suresh Nambiar' }
+  }
+  const defaultInfo = DEFAULT_OR_CASES[orId] || { procedure: 'General Surgical Procedure', surgeon: 'Dr. Aditi Sharma' }
+  const rawSurgeon = caseInfo?.primary_surgeon || caseInfo?.surgeon_name || defaultInfo.surgeon
+  const cleanSurgeon = rawSurgeon.replace(/^Dr\.\s*/i, '').replace(/\s*\(Chief Surgeon\)/i, '')
+  const procName = caseInfo?.procedure_name || caseInfo?.procedure_type || defaultInfo.procedure
 
   return (
     <div
@@ -145,46 +180,80 @@ function ORCard({ orId, onSelect }) {
         )}
       </div>
 
-      {/* Case Demographics */}
+      {/* Case Demographics with Chief Surgeon */}
       <div className="mb-3 pb-3 border-b border-slate-100 min-h-[40px] flex items-center justify-between">
-        {caseInfo ? (
-          <div>
-            <div className="text-xs font-bold text-slate-800 line-clamp-1">
-              {caseInfo.procedure_type || 'General Surgical Procedure'}
-            </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">
-              Dr. {caseInfo.surgeon_name || 'Staff Surgeon'}
-            </div>
+        <div>
+          <div className="text-xs font-bold text-slate-800 line-clamp-1">
+            {procName}
           </div>
-        ) : (
-          <div className="text-xs text-slate-400 italic">No scheduled case active</div>
-        )}
+          <div className="text-[11px] text-slate-600 mt-0.5 flex items-center gap-1">
+            <span className="font-semibold text-blue-600">Chief Surgeon:</span>
+            <span className="font-medium text-slate-700">Dr. {cleanSurgeon}</span>
+          </div>
+        </div>
         <ExternalLink className="w-3.5 h-3.5 text-slate-300 group-hover:text-blue-600 transition-colors shrink-0 ml-2" />
       </div>
 
       {/* Flagged Outlier Alert Banner */}
-      {vitals.is_outlier && (
-        <div className="mb-2.5 px-2.5 py-1.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-semibold flex items-center gap-1.5 animate-pulse">
-          <span className="shrink-0">🚨</span>
-          <span className="truncate">{vitals.outlier_reason || 'Statistical anomaly detected'}</span>
+      {topOutlier && (
+        <div className="mb-2.5 px-2.5 py-1.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-semibold flex items-center justify-between animate-pulse">
+          <div className="flex items-center gap-1.5 truncate">
+            <span className="shrink-0">🚨</span>
+            <span className="truncate">{outlierText}</span>
+          </div>
+          {orActiveOutliers.length > 1 && (
+            <span className="text-[9px] bg-rose-200 text-rose-800 px-1.5 py-0.5 rounded font-bold shrink-0 ml-1">
+              +{orActiveOutliers.length - 1} more
+            </span>
+          )}
         </div>
       )}
 
-      {/* Vital Chips */}
+      {/* Vital Chips - only outlying chips are styled in danger red */}
       <div className="flex gap-2 flex-wrap">
-        <VitalChip label="HR"   value={vitals.hr}      unit="bpm"  field="hr" />
-        <VitalChip label="SBP"  value={vitals.syst_bp} unit="mmHg" field="syst_bp" />
-        <VitalChip label="SpO₂" value={vitals.o2_sat}  unit="%"    field="o2_sat" />
-        <VitalChip label="Temp" value={vitals.temp_c}  unit="°C"   field="temp_c" />
+        <VitalChip
+          label="HR"
+          value={vitals.hr}
+          unit="bpm"
+          field="hr"
+          isOutlier={orActiveOutliers.some(o => o.metric === 'hr')}
+        />
+        <VitalChip
+          label="SBP"
+          value={vitals.syst_bp}
+          unit="mmHg"
+          field="syst_bp"
+          isOutlier={orActiveOutliers.some(o => o.metric === 'syst_bp') || (vitals.is_outlier && (vitals.metric === 'syst_bp' || !vitals.metric))}
+        />
+        <VitalChip
+          label="SpO₂"
+          value={vitals.o2_sat}
+          unit="%"
+          field="o2_sat"
+          isOutlier={orActiveOutliers.some(o => o.metric === 'o2_sat')}
+        />
+        <VitalChip
+          label="Temp"
+          value={vitals.temp_c}
+          unit="°C"
+          field="temp_c"
+          isOutlier={orActiveOutliers.some(o => o.metric === 'temp_c')}
+        />
       </div>
 
-      {/* HR Sparkline */}
+      {/* Sparkline for active/focused metric */}
       <div className="mt-3 pt-2 border-t border-slate-100">
         <div className="flex items-center justify-between mb-1">
-          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">HR Trend</span>
-          <span className="text-[9px] text-slate-400 font-mono">{hrHistory.length}/20 pts</span>
+          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+            {activeMetric === 'syst_bp' ? 'SBP Trend' : activeMetric === 'o2_sat' ? 'SpO₂ Trend' : 'HR Trend'}
+          </span>
+          <span className="text-[9px] text-slate-400 font-mono">{historyData.length}/20 pts</span>
         </div>
-        <HRSparkline data={hrHistory} />
+        <MetricSparkline
+          data={historyData}
+          metric={activeMetric}
+          isOutlier={Boolean(topOutlier)}
+        />
       </div>
 
       {/* Footer */}

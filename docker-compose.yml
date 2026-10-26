@@ -172,6 +172,63 @@ services:
       JVM_OPTS: "-Xms32M -Xmx64M"
     networks: [vs_net]
 
+  # ── FASTAPI BACKEND (Clinical Command Engine) ──────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: vitalstream-backend:latest
+    container_name: vs_backend
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGO_URI=mongodb://vsadmin:vspass2024@mongodb:27017/vitalstream?authSource=admin
+      - MONGO_DB=vitalstream
+      - KAFKA_BOOTSTRAP=kafka:9092
+      - KAFKA_TOPIC_VITALS=vitals.raw
+      - KAFKA_TOPIC_CASES=cases.events
+      - KAFKA_TOPIC_ALERTS_RAISED=alerts.raised
+      - KAFKA_TOPIC_ALERTS_ACK=alerts.acknowledged
+      - CASSANDRA_HOST=cassandra
+      - CASSANDRA_PORT=9042
+      - CASSANDRA_KEYSPACE=vitalstream
+      - FLINK_URL=http://jobmanager:8081
+      - ALLOWED_ORIGINS=http://localhost,http://localhost:80,http://localhost:5173,http://127.0.0.1,http://127.0.0.1:80,http://127.0.0.1:5173
+      - SECRET_KEY=vs_clinical_gandhinagar_sec_key_prod_2024_hmac_9812
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [vs_net]
+
+  # ── FRONTEND (React 18 + uPlot + Nginx Reverse Proxy) ────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: vitalstream-frontend:latest
+    container_name: vs_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"       # Standard HTTP
+      - "5173:80"     # Vite dev port alias for seamless local access
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/nginx-health"]
+      interval: 20s
+      timeout: 3s
+      retries: 3
+    networks: [vs_net]
+
+
 volumes:
   vs_kafka_data:
   vs_zookeeper_data:

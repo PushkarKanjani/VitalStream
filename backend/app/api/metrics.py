@@ -74,10 +74,76 @@ async def kafka_metrics():
     return doc or {"component": "kafka", "status": "no data yet"}
 
 
+from app.outlier_rules import get_active_outliers, get_active_outlier_count, METRIC_RULES
+
+
+from pydantic import BaseModel
+from typing import Optional
+
+class ReadingInjection(BaseModel):
+    or_id: str = "OR-2"
+    patient_id: str = "vdb-patient-102"
+    metric: str = "syst_bp"
+    value: float = 70.0
+    current_ts_s: Optional[float] = None
+
+
+@router.get("/rules")
+async def get_outlier_rules():
+    """Single source of truth rules config for outlier detection."""
+    return METRIC_RULES
+
+
+@router.get("/outliers/active")
+async def active_outliers_endpoint(current_ts_s: Optional[float] = None):
+    """
+    Returns only ACTIVE outliers:
+    - latest reading still violates its rule, OR
+    - last violating reading was within 60s (D1 window).
+    True count is returned without any artificial limit cap.
+    """
+    active = get_active_outliers(current_ts_s=current_ts_s)
+    return {
+        "count": len(active),
+        "active_outliers": active
+    }
+
+
+@router.post("/inject")
+async def inject_reading(req: ReadingInjection):
+    """Inject a specific vital reading for P6 acceptance testing."""
+    from app.outlier_rules import register_reading
+    res = register_reading(
+        req.patient_id,
+        req.or_id,
+        req.metric,
+        req.value,
+        current_ts_s=req.current_ts_s
+    )
+    return {
+        "status": "ok",
+        "or_id": req.or_id,
+        "metric": req.metric,
+        "value": req.value,
+        "evaluation": res
+    }
+
+
+@router.post("/outliers/clear")
+async def clear_outliers_endpoint():
+    """Clears in-memory active outliers store."""
+    from app.outlier_rules import clear_active_outliers
+    clear_active_outliers()
+    return {"status": "cleared"}
+
+
 @router.get("/outliers")
-async def cassandra_outliers(limit: int = 20):
-    """Returns real-time outliers flagged by Cassandra."""
-    from datetime import date
+async def cassandra_outliers(limit: int = 50, active_only: bool = False):
+    """Returns active or recent outliers flagged by Cassandra."""
+    if active_only:
+        active = get_active_outliers()
+        return {"count": len(active), "outliers": active}
+
     try:
         from consumer.consumer_cassandra import connect_cassandra
         cluster, session = connect_cassandra()
@@ -103,3 +169,4 @@ async def cassandra_outliers(limit: int = 20):
         return {"count": len(outliers), "outliers": outliers}
     except Exception as e:
         return {"count": 0, "outliers": [], "error": str(e)}
+

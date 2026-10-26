@@ -12,6 +12,7 @@ import {
   BarChart3,
   Server
 } from 'lucide-react'
+import PipelineHealth from './PipelineHealth'
 
 export default function LandingPage({ onLaunchCommandCenter }) {
   return (
@@ -22,9 +23,9 @@ export default function LandingPage({ onLaunchCommandCenter }) {
         <div className="max-w-7xl mx-auto flex items-center justify-between text-xs text-slate-600">
           <div className="flex items-center gap-2">
             <span className="live-pulse" />
-            <span className="font-semibold text-slate-800">VitalStream Platform v1.4</span>
+            <span className="font-semibold text-slate-800">VitalStream</span>
             <span className="text-slate-400">|</span>
-            <span>St. Jude Lakehouse Architecture Active</span>
+            <span>Apollo Hospitals, Gandhinagar · Active Clinical Telemetry Cluster</span>
           </div>
           <div className="hidden sm:flex items-center gap-4 text-slate-500">
             <span>SLA: &lt;5ms P95 Write Latency</span>
@@ -236,6 +237,20 @@ export default function LandingPage({ onLaunchCommandCenter }) {
                 <div className="text-xs text-slate-600 mt-1">WebSocket broadcast · uPlot</div>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Live Cluster Pipeline Status ──────────────────────────────────── */}
+      <section id="pipeline-status" className="py-16 px-6 bg-white border-t border-slate-200/80">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center max-w-xl mx-auto mb-8">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-blue-600 mb-1">Infrastructure Health</h2>
+            <h3 className="text-2xl font-bold text-slate-900">Live Big Data Pipeline Status</h3>
+            <p className="text-xs text-slate-500 mt-1">Real-time health monitoring of distributed ingestion, stream processing, and storage nodes</p>
+          </div>
+          <div className="bg-[#FAFBFD] rounded-2xl border border-slate-200 p-6 shadow-sm">
+            <PipelineHealth />
           </div>
         </div>
       </section>

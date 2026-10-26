@@ -8,7 +8,6 @@ import LandingPage from './components/LandingPage'
 import ORWall from './components/ORWall'
 import AlertQueue from './components/AlertQueue'
 import BedBoard from './components/BedBoard'
-import PipelineHealth from './components/PipelineHealth'
 import VitalWaveform from './components/VitalWaveform'
 import MedicationConsole from './components/MedicationConsole'
 import AuditReports from './components/AuditReports'
@@ -73,8 +72,8 @@ function AppContent() {
       .catch(() => {})
   }, [dispatch])
 
-  // Outlier count badge for tab
-  const outlierCount = state.outlierLog?.length || 0
+  // True count of active outliers (D1 window)
+  const activeOutlierCount = (state.activeOutliers || []).length
 
   return (
     <div className="min-h-screen bg-[#FAFBFD] text-slate-900 flex flex-col font-sans">
@@ -120,7 +119,7 @@ function AppContent() {
                   { id: 'waveforms', label: 'Waveforms' },
                   { id: 'beds',      label: 'Recovery Beds' },
                   { id: 'alerts',    label: 'Alerts' },
-                  { id: 'outliers',  label: outlierCount > 0 ? `🚨 Outliers (${outlierCount})` : 'Outliers', danger: outlierCount > 0 },
+                  { id: 'outliers',  label: activeOutlierCount > 0 ? `🚨 Outliers (${activeOutlierCount})` : 'Outliers', danger: activeOutlierCount > 0 },
                 ].map(sub => (
                   <button
                     key={sub.id}
@@ -150,7 +149,7 @@ function AppContent() {
                     onSelectOr={(orId) => setSelectedOrForDrawer(orId)} 
                   />
                   <div className="pt-2">
-                    <VitalWaveform orId="OR-1" field="hr" />
+                    <VitalWaveform orId={selectedOrForDrawer || (state.activeOutliers?.[0]?.or_id) || 'OR-2'} field="hr" />
                   </div>
                 </div>
 
@@ -208,13 +207,6 @@ function AppContent() {
         {currentView === 'audit' && (
           <div className="animate-enter">
             <AuditReports />
-          </div>
-        )}
-
-        {/* VIEW 5: Cluster Architecture & Pipeline Health */}
-        {currentView === 'cluster' && (
-          <div className="max-w-4xl mx-auto px-6 py-8 animate-enter">
-            <PipelineHealth />
           </div>
         )}
 

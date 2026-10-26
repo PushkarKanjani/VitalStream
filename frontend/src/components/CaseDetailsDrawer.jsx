@@ -40,7 +40,7 @@ export default function CaseDetailsDrawer({ orId, onClose, onOpenMedConsole }) {
               </div>
               <div>
                 <h3 className="text-base font-bold text-slate-900">
-                  {caseInfo?.procedure_type || 'Surgery Details'}
+                  {caseInfo?.procedure_name || caseInfo?.procedure_type || 'Surgery Details'}
                 </h3>
                 <div className="text-xs text-slate-500 font-medium">
                   {caseInfo?.case_id ? `Case #${caseInfo.case_id}` : 'No Active Surgery'}
@@ -85,11 +85,11 @@ export default function CaseDetailsDrawer({ orId, onClose, onOpenMedConsole }) {
               <div className="p-3.5 rounded-xl border border-slate-200 space-y-2 bg-white">
                 <div className="flex items-center gap-2.5 text-xs text-slate-700">
                   <Stethoscope className="w-4 h-4 text-blue-600 shrink-0" />
-                  <span>Surgeon: <strong>Dr. {caseInfo?.surgeon_name || 'Emily Vance'}</strong></span>
+                  <span>Chief Surgeon: <strong className="text-slate-900">Dr. {(caseInfo?.surgeon_name || caseInfo?.primary_surgeon || 'Aditi Sharma').replace(/^Dr\.\s*/i, '').replace(/\s*\(Chief Surgeon\)/i, '')}</strong></span>
                 </div>
                 <div className="flex items-center gap-2.5 text-xs text-slate-700">
                   <User className="w-4 h-4 text-indigo-600 shrink-0" />
-                  <span>Anesthesiologist: <strong>{caseInfo?.anesthesiologist || 'Attending Staff'}</strong></span>
+                  <span>Anesthesiologist: <strong className="text-slate-900">{caseInfo?.anesthesiologist || 'Dr. Amit Sen'}</strong></span>
                 </div>
                 <div className="flex items-center gap-2.5 text-xs text-slate-700">
                   <Clock className="w-4 h-4 text-slate-400 shrink-0" />

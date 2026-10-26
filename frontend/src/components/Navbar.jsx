@@ -15,16 +15,16 @@ import {
   Building2
 } from 'lucide-react'
 import { useCases } from '../context/CasesContext'
+import { getHeaderClock } from '../utils/timeFormat'
 
 export default function Navbar({ currentView, onViewChange, wsConnected }) {
   const { state } = useCases()
-  const [utcTime, setUtcTime] = useState('')
+  const [clockTime, setClockTime] = useState('')
 
-  // Live hospital clock
+  // Live hospital clock (IST)
   useEffect(() => {
     const updateTime = () => {
-      const now = new Date()
-      setUtcTime(now.toTimeString().split(' ')[0] + ' UTC')
+      setClockTime(getHeaderClock())
     }
     updateTime()
     const timer = setInterval(updateTime, 1000)
@@ -38,7 +38,6 @@ export default function Navbar({ currentView, onViewChange, wsConnected }) {
     { id: 'command',   label: 'Command Center',    icon: Activity, badge: unackedAlerts > 0 ? unackedAlerts : null },
     { id: 'meds',      label: 'Medication Check',  icon: Pill },
     { id: 'audit',     label: 'Activity Logs',     icon: FileText },
-    { id: 'cluster',   label: 'System Status',     icon: Server },
   ]
 
   return (
@@ -58,12 +57,9 @@ export default function Navbar({ currentView, onViewChange, wsConnected }) {
             <div>
               <div className="font-extrabold text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
                 <span>VitalStream</span>
-                <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
-                  PROD v1.4
-                </span>
               </div>
               <div className="text-[11px] text-slate-500 font-medium">
-                St. Jude Memorial Hospital · OR Suite 1-6
+                Apollo Hospitals, Gandhinagar
               </div>
             </div>
           </div>
@@ -75,7 +71,7 @@ export default function Navbar({ currentView, onViewChange, wsConnected }) {
           {/* Hospital Clock */}
           <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200/80 text-xs font-mono text-slate-600">
             <Clock className="w-3.5 h-3.5 text-slate-400" />
-            <span>{utcTime || '00:00:00 UTC'}</span>
+            <span>{clockTime || '00:00:00 IST'}</span>
           </div>
 
           {/* WebSocket Live Indicator */}

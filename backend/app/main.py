@@ -13,7 +13,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import connect_mongo, disconnect_mongo, get_db
-from app.api import cases, beds, orders, alerts, patients, metrics
+from app.api import cases, beds, orders, alerts, patients, metrics, drugs
 from app.websocket_manager import ConnectionManager, change_stream_listener, vitals_stream_worker
 
 logger = logging.getLogger("vitalstream")
@@ -45,21 +45,41 @@ async def lifespan(app: FastAPI):
     logger.info("MongoDB disconnected")
 
 
+import os
+from app.security import SecurityHeadersMiddleware, RateLimiterMiddleware, secure_exception_handler
+
 # ── App factory ────────────────────────────────────────────────────────────────
 app = FastAPI(
-    title="VitalStream API",
-    description="Perioperative command center — real-time OR monitoring",
+    title="VitalStream Clinical API",
+    description="Perioperative Surgical Command Center — Real-Time Telemetry & Anomaly Analytics",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json"
 )
+
+# ── 1. Security Headers Middleware (OWASP / HIPAA) ─────────────────────────────
+app.add_middleware(SecurityHeadersMiddleware)
+
+# ── 2. Sliding Window Rate Limiter (Anti-DoS / Brute Force) ───────────────────
+app.add_middleware(RateLimiterMiddleware, read_limit=240, write_limit=60)
+
+# ── 3. Production CORS Configuration ──────────────────────────────────────────
+raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:80,http://localhost,http://127.0.0.1")
+allowed_origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=allowed_origins if allowed_origins else ["*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "Retry-After"]
 )
+
+# ── 4. Sanitized Global Exception Handler (No Data / Credential Leaks) ────────
+app.add_exception_handler(Exception, secure_exception_handler)
 
 # ── Route mounts ───────────────────────────────────────────────────────────────
 app.include_router(patients.router, prefix="/api/patients", tags=["patients"])
@@ -68,6 +88,7 @@ app.include_router(beds.router,     prefix="/api/beds",     tags=["beds"])
 app.include_router(orders.router,   prefix="/api/orders",   tags=["orders"])
 app.include_router(alerts.router,   prefix="/api/alerts",   tags=["alerts"])
 app.include_router(metrics.router,  prefix="/api/metrics",  tags=["metrics"])
+app.include_router(drugs.router,    prefix="/api/drugs",    tags=["drugs"])
 
 
 # ── WebSocket endpoint ─────────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ import os
 import random
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import WebSocket
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -177,139 +177,29 @@ async def vitals_stream_worker(manager: ConnectionManager):
             threshold = None
 
             # ── OR-1: Coronary Bypass — SpO₂ desaturation & Tachycardia ──
-            if or_idx == 1:
-                if j == 4:
-                    spo2 = 85.5
-                    is_outlier = True
-                    outlier_reason = "Clinical Outlier: SpO₂ 85.5% — Acute Desaturation (threshold < 88%)"
-                    severity = "CRITICAL"
-                    metric = "o2_sat"
-                    val = spo2
-                    alert_type = "O2_FALLING"
-                    threshold = 88.0
-                elif j == 13:
-                    hr = 152.0
-                    is_outlier = True
-                    outlier_reason = "Clinical Outlier: Heart Rate 152.0 bpm — Tachycardia Surge (threshold > 140)"
-                    severity = "CRITICAL"
-                    metric = "hr"
-                    val = hr
-                    alert_type = "HR_HIGH"
-                    threshold = 140.0
+            rule = None
+            expected_low = None
+            expected_high = None
+            z_score = None
+            unit = ""
 
-            # ── OR-2: Knee Arthroplasty — Hypotensive dip & EtCO₂ high ──
-            elif or_idx == 2:
+            # ── Only OR-2 has an active clinical outlier (Hypotensive event: SBP 70.0 mmHg) ──
+            # Other rooms (OR-1, OR-3, OR-4, OR-5, OR-6) operate within normal stable ranges
+            # to mirror authentic clinical environments and prevent alarm fatigue.
+            if or_idx == 2:
                 if j == 5:
                     sbp = 70.0
                     is_outlier = True
-                    outlier_reason = "Clinical Outlier: Systolic BP 70.0 mmHg — Hypotensive Dip (threshold < 75)"
-                    severity = "CRITICAL"
                     metric = "syst_bp"
                     val = sbp
+                    unit = "mmHg"
+                    rule = "THRESHOLD"
+                    expected_low = 75.0
+                    expected_high = 180.0
+                    outlier_reason = f"SBP {val:.1f} mmHg | below {expected_low} | THRESHOLD"
+                    severity = "CRITICAL"
                     alert_type = "BP_LOW"
                     threshold = 75.0
-                elif j == 14:
-                    etco2 = 58.0
-                    is_outlier = True
-                    outlier_reason = "Clinical Outlier: EtCO₂ 58.0 mmHg — Hypercapnia (threshold > 55)"
-                    severity = "WARNING"
-                    metric = "etco2"
-                    val = etco2
-                    alert_type = "BP_HIGH"
-                    threshold = 55.0
-
-            # ── OR-3: Craniotomy — Bradycardia & Hyperthermia ──
-            elif or_idx == 3:
-                if j == 6:
-                    hr = 41.0
-                    is_outlier = True
-                    outlier_reason = "Clinical Outlier: Heart Rate 41.0 bpm — Severe Bradycardia (threshold < 45)"
-                    severity = "CRITICAL"
-                    metric = "hr"
-                    val = hr
-                    alert_type = "HR_LOW"
-                    threshold = 45.0
-                elif j == 15:
-                    temp = 39.8
-                    is_outlier = True
-                    outlier_reason = "Clinical Outlier: Temp 39.8°C — Hyperthermia Risk (threshold > 39.0°C)"
-                    severity = "WARNING"
-                    metric = "temp_c"
-                    val = temp
-                    alert_type = "TEMP_HIGH"
-                    threshold = 39.0
-
-            # ── OR-4: General Laparoscopy — Severe Bradycardia & Hypotensive Crisis ──
-            elif or_idx == 4:
-                if j == 7:
-                    hr = 38.0
-                    is_outlier = True
-                    outlier_reason = "Clinical Outlier: Heart Rate 38.0 bpm — Severe Bradycardia (threshold < 45)"
-                    severity = "CRITICAL"
-                    metric = "hr"
-                    val = hr
-                    alert_type = "HR_LOW"
-                    threshold = 45.0
-                elif j == 16:
-                    sbp = 66.0
-                    is_outlier = True
-                    outlier_reason = "Clinical Outlier: Systolic BP 66.0 mmHg — Hypotensive Crisis (threshold < 75)"
-                    severity = "CRITICAL"
-                    metric = "syst_bp"
-                    val = sbp
-                    alert_type = "BP_LOW"
-                    threshold = 75.0
-
-            # ── OR-5: Cardiac Valve — Severe Tachycardia, Hypertensive Emergency, Hypoxemia ──
-            elif or_idx == 5:
-                if j == 4:
-                    hr = 172.0
-                    is_outlier = True
-                    outlier_reason = "Clinical Outlier: Heart Rate 172.0 bpm — Severe Tachycardia (threshold > 140)"
-                    severity = "CRITICAL"
-                    metric = "hr"
-                    val = hr
-                    alert_type = "HR_HIGH"
-                    threshold = 140.0
-                elif j == 11:
-                    sbp = 196.0
-                    is_outlier = True
-                    outlier_reason = "Clinical Outlier: Systolic BP 196.0 mmHg — Hypertensive Emergency (threshold > 180)"
-                    severity = "CRITICAL"
-                    metric = "syst_bp"
-                    val = sbp
-                    alert_type = "BP_HIGH"
-                    threshold = 180.0
-                elif j == 17:
-                    spo2 = 80.5
-                    is_outlier = True
-                    outlier_reason = "Clinical Outlier: SpO₂ 80.5% — Critical Hypoxemia (threshold < 85%)"
-                    severity = "CRITICAL"
-                    metric = "o2_sat"
-                    val = spo2
-                    alert_type = "O2_FALLING"
-                    threshold = 85.0
-
-            # ── OR-6: Trauma Repair — SpO₂ dip & Hypocapnia ──
-            elif or_idx == 6:
-                if j == 8:
-                    spo2 = 86.5
-                    is_outlier = True
-                    outlier_reason = "Statistical Z-Score Outlier: SpO₂ 86.5% (Z=2.8 > 2.5 threshold)"
-                    severity = "WARNING"
-                    metric = "o2_sat"
-                    val = spo2
-                    alert_type = "O2_FALLING"
-                    threshold = 88.0
-                elif j == 16:
-                    etco2 = 18.0
-                    is_outlier = True
-                    outlier_reason = "Clinical Outlier: EtCO₂ 18.0 mmHg — Hypocapnia / Hyperventilation (threshold < 20)"
-                    severity = "WARNING"
-                    metric = "etco2"
-                    val = etco2
-                    alert_type = "BP_LOW"
-                    threshold = 20.0
 
             points.append({
                 "or_id": f"OR-{or_idx}",
@@ -325,6 +215,11 @@ async def vitals_stream_worker(manager: ConnectionManager):
                 "outlier_reason": outlier_reason,
                 "metric":         metric,
                 "val":            val,
+                "unit":           unit,
+                "rule":           rule,
+                "expected_low":   expected_low,
+                "expected_high":  expected_high,
+                "z_score":        z_score,
                 "severity":       severity,
                 "alert_type":     alert_type,
                 "threshold":      threshold,
@@ -333,6 +228,8 @@ async def vitals_stream_worker(manager: ConnectionManager):
 
     or_windows = {f"OR-{i}": generate_fixed_window(i) for i in range(1, 7)}
     current_step = 0
+
+    from app.outlier_rules import register_reading, get_active_outliers, METRIC_RULES
 
     # Try connecting to Cassandra for recording flagged outliers
     cass_session = None
@@ -344,18 +241,21 @@ async def vitals_stream_worker(manager: ConnectionManager):
         logger.warning(f"Cassandra connection skipped in WS worker ({e})")
 
     # Pre-populate latest_vitals cache with step 0
+    now_utc_init = datetime.now(timezone.utc)
     for or_id, w in or_windows.items():
         v = dict(w[0])
-        v["timestamp"] = datetime.utcnow().isoformat()
+        v["timestamp"] = now_utc_init.isoformat()
+        v["ts_utc_ms"] = int(now_utc_init.timestamp() * 1000)
         latest_vitals[or_id] = v
 
     last_kafka_ts = {or_id: 0.0 for or_id in OR_IDS}
 
     while True:
         now_ts = time.time()
-        now_iso = datetime.utcnow().isoformat()
-        now_dt = datetime.utcnow()
-        today_date = now_dt.date()
+        now_utc = datetime.now(timezone.utc)
+        now_iso = now_utc.isoformat()
+        ts_utc_ms = int(now_utc.timestamp() * 1000)
+        today_date = now_utc.date()
 
         # 1. Forward incoming Kafka messages if active
         while not queue.empty():
@@ -376,7 +276,8 @@ async def vitals_stream_worker(manager: ConnectionManager):
                         "etco2": rec.get("etco2"),
                         "is_outlier": rec.get("is_outlier", False),
                         "outlier_reason": rec.get("outlier_reason"),
-                        "timestamp": rec.get("timestamp") or now_iso
+                        "timestamp": rec.get("timestamp") or now_iso,
+                        "ts_utc_ms": ts_utc_ms,
                     }
                     latest_vitals[or_id] = v_data
                     await manager.broadcast({"event": "vitals", "data": v_data})
@@ -391,18 +292,57 @@ async def vitals_stream_worker(manager: ConnectionManager):
                 template = or_windows[or_id][current_step]
                 v_data = dict(template)
                 v_data["timestamp"] = now_iso
+                v_data["ts_utc_ms"] = ts_utc_ms
+
+                # Register reading in active outlier tracker
+                if v_data.get("is_outlier") and v_data.get("metric"):
+                    register_reading(
+                        v_data["patient_id"],
+                        or_id,
+                        v_data["metric"],
+                        float(v_data["val"]),
+                        current_ts_s=now_ts
+                    )
+                else:
+                    # Register normal metrics
+                    for m_name, m_val in [("hr", v_data["hr"]), ("syst_bp", v_data["syst_bp"]), ("o2_sat", v_data["o2_sat"])]:
+                        if m_val is not None:
+                            register_reading(
+                                v_data["patient_id"],
+                                or_id,
+                                m_name,
+                                float(m_val),
+                                current_ts_s=now_ts
+                            )
+
+                active_outliers = get_active_outliers(current_ts_s=now_ts)
+                v_data["active_outliers"] = active_outliers
 
                 # If dummy outlier is flagged, record it into Cassandra AND MongoDB alerts
                 if v_data.get("is_outlier"):
-                    # 1. Cassandra write
+                    # 1. Cassandra write to both patient_outliers and outliers_by_or
                     if cass_session:
                         try:
+                            # P2 patient_outliers write
+                            cass_session.execute("""
+                                INSERT INTO patient_outliers
+                                  (patient_id, bucket_date, ts_utc_ms, or_id, metric, value, unit, rule, expected_low, expected_high, z_score, severity)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            """, (
+                                v_data["patient_id"], today_date, ts_utc_ms,
+                                or_id, v_data["metric"], float(v_data["val"]),
+                                v_data.get("unit") or "", v_data.get("rule") or "THRESHOLD",
+                                float(v_data.get("expected_low") or 0.0), float(v_data.get("expected_high") or 0.0),
+                                float(v_data.get("z_score")) if v_data.get("z_score") is not None else None,
+                                v_data.get("severity") or "CRITICAL"
+                            ))
+
                             cass_session.execute("""
                                 INSERT INTO latest_vitals_by_or
                                   (or_id, patient_id, ts, hr, syst_bp, dias_bp, o2_sat, temp_c, is_outlier, outlier_reason)
                                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                             """, (
-                                or_id, v_data["patient_id"], now_dt,
+                                or_id, v_data["patient_id"], now_utc,
                                 float(v_data["hr"]), float(v_data["syst_bp"]), float(v_data["dias_bp"]),
                                 float(v_data["o2_sat"]), float(v_data["temp_c"]),
                                 True, v_data["outlier_reason"]
@@ -412,7 +352,7 @@ async def vitals_stream_worker(manager: ConnectionManager):
                                   (or_id, reading_date, ts, patient_id, metric, val, outlier_reason, severity)
                                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                             """, (
-                                or_id, today_date, now_dt,
+                                or_id, today_date, now_utc,
                                 v_data["patient_id"], v_data.get("metric", "hr"), float(v_data.get("val", v_data["hr"])),
                                 v_data["outlier_reason"], v_data.get("severity", "CRITICAL")
                             ))
@@ -435,7 +375,7 @@ async def vitals_stream_worker(manager: ConnectionManager):
                             "message": v_data["outlier_reason"],
                             "value": float(v_data.get("val") or v_data["hr"]),
                             "threshold": float(v_data.get("threshold") or 140.0),
-                            "created_at": now_dt,
+                            "created_at": now_utc,
                             "acknowledged": False,
                             "acknowledged_by": None,
                             "acknowledged_at": None,
@@ -456,6 +396,11 @@ async def vitals_stream_worker(manager: ConnectionManager):
                 latest_vitals[or_id] = v_data
                 await manager.broadcast({"event": "vitals", "data": v_data})
 
+        # Broadcast active outliers snapshot for true active counting
+        all_active = get_active_outliers(current_ts_s=now_ts)
+        await manager.broadcast({"event": "active_outliers", "data": all_active})
+
         await asyncio.sleep(0.8)  # 800ms comfortable cadence
+
 
 

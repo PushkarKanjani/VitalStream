@@ -61,9 +61,26 @@ class OrderCreate(BaseModel):
     case_id: str
     patient_id: str
     medication: str
-    dose_mg: float
-    route: Literal["IV", "oral", "inhaled", "topical"]
-    ordered_by: str
+    dose_mg: float = 500.0
+    route: str = "IV"
+    ordered_by: str = "Attending Clinician"
+    # Indian prescription & structured drug attributes (P9 & P11)
+    brand: Optional[str] = None
+    salts: Optional[list[dict]] = None
+    form: Optional[str] = "Tab."
+    strength: Optional[str] = None
+    dose: Optional[float] = None
+    unit: Optional[str] = "mg"
+    frequency: Optional[str] = "BD"
+    pattern: Optional[str] = "1-0-1"
+    food_timing: Optional[str] = "after food"
+    duration_days: Optional[int] = 5
+    qty: Optional[int] = None
+    mrp_inr: Optional[float] = None
+    allergy_status: Optional[str] = "CLEARED"
+    caution_note: Optional[str] = None
+    rx_line: Optional[str] = None
+    idempotency_key: Optional[str] = None
 
 
 class Order(OrderCreate):
